@@ -1,0 +1,220 @@
+[
+    {
+        "Name": "English for IT",
+        "Flashcards": [
+            {
+                "Front": "Bug",
+                "Back": "Błąd"
+            },
+            {
+                "Front": "Feature",
+                "Back": "Funkcjonalność"
+            },
+            {
+                "Front": "Deploy",
+                "Back": "Wdrożyć"
+            },
+            {
+                "Front": "Commit",
+                "Back": "Zatwierdzić zmiany"
+            },
+            {
+                "Front": "Merge",
+                "Back": "Połączyć (gałęzie)"
+            },
+            {
+                "Front": "Branch",
+                "Back": "Gałąź"
+            },
+            {
+                "Front": "Pull request",
+                "Back": "Prośba o scalenie"
+            },
+            {
+                "Front": "Build",
+                "Back": "Kompilacja / build"
+            },
+            {
+                "Front": "Release",
+                "Back": "Wydanie wersji"
+            },
+            {
+                "Front": "Environment",
+                "Back": "Środowisko"
+            },
+            {
+                "Front": "Production",
+                "Back": "Produkcja"
+            },
+            {
+                "Front": "Staging",
+                "Back": "Środowisko testowe"
+            },
+            {
+                "Front": "Backend",
+                "Back": "Zaplecze aplikacji"
+            },
+            {
+                "Front": "Frontend",
+                "Back": "Warstwa interfejsu"
+            },
+            {
+                "Front": "Database",
+                "Back": "Baza danych"
+            },
+            {
+                "Front": "Query",
+                "Back": "Zapytanie"
+            },
+            {
+                "Front": "Performance",
+                "Back": "Wydajność"
+            },
+            {
+                "Front": "Scalability",
+                "Back": "Skalowalność"
+            },
+            {
+                "Front": "Crash",
+                "Back": "Awaria aplikacji"
+            },
+            {
+                "Front": "Debug",
+                "Back": "Debugować"
+            },
+            {
+                "Front": "Log",
+                "Back": "Dziennik zdarzeń"
+            },
+            {
+                "Front": "Error",
+                "Back": "Błąd (techniczny)"
+            },
+            {
+                "Front": "Exception",
+                "Back": "Wyjątek"
+            },
+            {
+                "Front": "Timeout",
+                "Back": "Przekroczenie czasu"
+            },
+            {
+                "Front": "Endpoint",
+                "Back": "Punkt końcowy API"
+            },
+            {
+                "Front": "Request",
+                "Back": "Żądanie"
+            },
+            {
+                "Front": "Response",
+                "Back": "Odpowiedź"
+            },
+            {
+                "Front": "Authentication",
+                "Back": "Uwierzytelnianie"
+            },
+            {
+                "Front": "Authorization",
+                "Back": "Autoryzacja"
+            },
+            {
+                "Front": "Permission",
+                "Back": "Uprawnienie"
+            },
+            {
+                "Front": "Configuration",
+                "Back": "Konfiguracja"
+            },
+            {
+                "Front": "Dependency",
+                "Back": "Zależność"
+            },
+            {
+                "Front": "Library",
+                "Back": "Biblioteka"
+            },
+            {
+                "Front": "Framework",
+                "Back": "Framework"
+            },
+            {
+                "Front": "Version control",
+                "Back": "Kontrola wersji"
+            },
+            {
+                "Front": "Repository",
+                "Back": "Repozytorium"
+            },
+            {
+                "Front": "Rollback",
+                "Back": "Cofnięcie zmian"
+            },
+            {
+                "Front": "Hotfix",
+                "Back": "Szybka poprawka"
+            },
+            {
+                "Front": "Code review",
+                "Back": "Przegląd kodu"
+            },
+            {
+                "Front": "Refactor",
+                "Back": "Refaktoryzacja"
+            },
+            {
+                "Front": "Technical debt",
+                "Back": "Dług techniczny"
+            },
+            {
+                "Front": "Maintenance",
+                "Back": "Utrzymanie"
+            },
+            {
+                "Front": "Uptime",
+                "Back": "Czas działania"
+            },
+            {
+                "Front": "Downtime",
+                "Back": "Przestój"
+            },
+            {
+                "Front": "Monitoring",
+                "Back": "Monitorowanie"
+            },
+            {
+                "Front": "Issue",
+                "Back": "Zgłoszenie / problem"
+            },
+            {
+                "Front": "Ticket",
+                "Back": "Zadanie (np. Jira)"
+            },
+            {
+                "Front": "Estimate",
+                "Back": "Estymacja"
+            },
+            {
+                "Front": "Deadline",
+                "Back": "Termin"
+            },
+            {
+                "Front": "Stakeholder",
+                "Back": "Interesariusz"
+            }
+        ]
+    },
+    {
+        "Name": "English for Beginners",
+        "Flashcards": [
+            {
+                "Front": "Apple",
+                "Back": "Jabłko"
+            },
+            {
+                "Front": "Job",
+                "Back": "Praca"
+            }
+        ]
+    }
+]

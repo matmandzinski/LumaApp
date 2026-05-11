@@ -1,0 +1,32 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# JetBrains Rider
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime app data - user state
+Data/user_sets.json
+Data/learning_state.json
+Data/learning_queue.json
+**/Data/user_sets.json
+**/Data/learning_state.json
+**/Data/learning_queue.json
+
+# Test results
+TestResults/
+*.trx

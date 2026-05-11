@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LingoFlow — Quick Lesson Ready</title>
+  <style>
+    :root {
+      --bg: #f7f4ee;
+      --ink: #141613;
+      --muted: #6f766f;
+      --card: rgba(255,255,255,.78);
+      --green: #247a4d;
+      --green-soft: #e2f4e9;
+      --orange-soft: #fff0d6;
+      --shadow: 0 20px 55px rgba(42, 38, 30, .11);
+      --shadow-soft: 0 10px 28px rgba(42, 38, 30, .07);
+      --radius-xl: 38px;
+      --radius-lg: 30px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 14% 8%, rgba(61,166,106,.22), transparent 28%),
+        radial-gradient(circle at 88% 15%, rgba(240,163,58,.18), transparent 26%),
+        #e9e5dc;
+    }
+
+    .phone {
+      width: 390px;
+      height: 844px;
+      border-radius: 42px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.74), rgba(247,244,238,.98) 40%),
+        var(--bg);
+      box-shadow: 0 30px 90px rgba(20, 18, 14, .24);
+      position: relative;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(rgba(255,255,255,.32) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.32) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.42), transparent 48%);
+      pointer-events: none;
+    }
+
+    .screen {
+      height: 100%;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      height: 72px;
+      padding: 18px 22px 8px;
+      display: grid;
+      grid-template-columns: 42px 1fr 42px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .brand {
+      text-align: center;
+      font-weight: 850;
+      letter-spacing: -0.025em;
+      font-size: 21px;
+    }
+
+    .icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.75);
+      background: rgba(255,255,255,.62);
+      backdrop-filter: blur(14px);
+      color: #657067;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 1px 0 rgba(255,255,255,.9) inset;
+    }
+
+    .icon svg { width: 20px; height: 20px; stroke-width: 2.1; }
+
+    .content {
+      padding: 8px 20px 112px;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    .hero {
+      margin-top: 4px;
+      margin-bottom: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .hello {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    .headline {
+      margin: 0;
+      max-width: 250px;
+      font-size: 33px;
+      line-height: 1.04;
+      font-weight: 880;
+      letter-spacing: -0.035em;
+    }
+
+    .headline span {
+      color: var(--green);
+    }
+
+    .daily-chip {
+      width: 78px;
+      height: 78px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(240,163,58,.25), transparent 48%),
+        rgba(255,255,255,.72);
+      border: 1px solid rgba(255,255,255,.82);
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .daily-chip .emoji {
+      font-size: 21px;
+      line-height: 1;
+      margin-bottom: 3px;
+    }
+
+    .daily-chip strong {
+      font-size: 19px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+
+    .daily-chip span {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      font-weight: 760;
+      margin-top: 3px;
+    }
+
+    .active-compact {
+      margin: 18px 0 16px;
+      border-radius: 28px;
+      background: rgba(255,255,255,.70);
+      border: 1px solid rgba(255,255,255,.82);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-soft);
+      padding: 14px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+    }
+
+    .deck-badge {
+      width: 48px;
+      height: 48px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      background: #142019;
+      color: white;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+      flex: 0 0 auto;
+    }
+
+    .active-copy {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .2em;
+      color: var(--muted);
+      font-weight: 760;
+      margin-bottom: 4px;
+    }
+
+    .deck-name {
+      font-size: 18px;
+      font-weight: 830;
+      letter-spacing: -0.025em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .change {
+      border: 0;
+      background: var(--green-soft);
+      color: var(--green);
+      height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      font-weight: 780;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .quick-card {
+      position: relative;
+      min-height: 286px;
+      border-radius: var(--radius-xl);
+      padding: 26px;
+      color: white;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 78% 22%, rgba(255,255,255,.23), transparent 24%),
+        linear-gradient(150deg, #1c6f45, #35a067 62%, #8bd2a4);
+      box-shadow: 0 28px 70px rgba(36,122,77,.30);
+    }
+
+    .quick-card::before {
+      content: "";
+      position: absolute;
+      width: 230px;
+      height: 230px;
+      border-radius: 999px;
+      right: -95px;
+      bottom: -110px;
+      background: rgba(255,255,255,.14);
+    }
+
+    .quick-card::after {
+      content: "⚡";
+      position: absolute;
+      right: 24px;
+      top: 24px;
+      width: 64px;
+      height: 64px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,255,255,.16);
+      border: 1px solid rgba(255,255,255,.22);
+      backdrop-filter: blur(10px);
+      color: white;
+      font-size: 28px;
+      line-height: 1;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+    }
+
+    .quick-content {
+      position: relative;
+      z-index: 2;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .quick-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      height: 32px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.16);
+      border: 1px solid rgba(255,255,255,.18);
+      color: rgba(255,255,255,.86);
+      font-size: 12px;
+      font-weight: 720;
+      margin-bottom: 24px;
+    }
+
+    .pulse {
+      width: 7px;
+      height: 7px;
+      background: #fff;
+      border-radius: 999px;
+      box-shadow: 0 0 0 5px rgba(255,255,255,.16);
+    }
+
+    .quick-title {
+      margin: 0;
+      font-size: 38px;
+      line-height: .99;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      max-width: 255px;
+    }
+
+    .quick-desc {
+      margin: 15px 0 24px;
+      color: rgba(255,255,255,.83);
+      font-size: 15px;
+      line-height: 1.45;
+      max-width: 260px;
+    }
+
+    .quick-bottom {
+      margin-top: auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .start {
+      height: 60px;
+      border: 0;
+      border-radius: 999px;
+      background: #fff;
+      color: #16633c;
+      font-size: 16px;
+      font-weight: 850;
+      letter-spacing: -0.01em;
+      box-shadow: 0 12px 30px rgba(16, 43, 28, .16);
+      cursor: pointer;
+    }
+
+    .continue-row {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .mini-card {
+      min-height: 140px;
+      border-radius: 30px;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,.78);
+      backdrop-filter: blur(16px);
+      padding: 18px;
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .mini-card.dark {
+      background: #151b17;
+      color: white;
+    }
+
+    .mini-card.dark .mini-sub { color: rgba(255,255,255,.66); }
+
+    .mini-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .mini-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 16px;
+      background: var(--green-soft);
+      color: var(--green);
+      display: grid;
+      place-items: center;
+    }
+
+    .mini-card.dark .mini-icon {
+      background: rgba(255,255,255,.12);
+      color: white;
+    }
+
+    .mini-title {
+      font-size: 18px;
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+      font-weight: 850;
+      margin: 0 0 6px;
+    }
+
+    .mini-sub {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      height: 74px;
+      border-radius: 28px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,.86);
+      box-shadow:
+        0 18px 42px rgba(30, 50, 40, 0.15),
+        0 4px 12px rgba(30, 50, 40, 0.06),
+        inset 0 1px 0 rgba(255,255,255,0.95);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: center;
+      padding: 8px;
+      z-index: 20;
+    }
+
+    .nav-item {
+      height: 58px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 780;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .nav-item.active {
+      background: var(--green-soft);
+      color: var(--green);
+      box-shadow:
+        0 4px 12px rgba(36, 122, 77, 0.08),
+        inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    svg {
+      width: 20px;
+      height: 20px;
+      stroke-width: 2.2;
+    }
+
+    button { font-family: inherit; }
+
+    @media (max-width: 430px) {
+      body { background: var(--bg); }
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <section class="screen">
+      <header class="topbar">
+        <button class="icon" aria-label="Open menu">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <div class="brand">LingoFlow</div>
+
+        <button class="icon" aria-label="Profile and settings">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M20 21a8 8 0 0 0-16 0" stroke-linecap="round"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+        </button>
+      </header>
+
+      <section class="content">
+        <section class="hero">
+          <div>
+            <div class="hello">Good morning, Mateusz</div>
+            <h1 class="headline">Tiny steps.<br/>Big <span>progress.</span></h1>
+          </div>
+
+          <div class="daily-chip">
+            <div class="emoji">🔥</div>
+            <strong>12</strong>
+            <span>days</span>
+          </div>
+        </section>
+
+        <section class="active-compact">
+          <div class="deck-badge">IT</div>
+          <div class="active-copy">
+            <div class="label">Active deck</div>
+            <div class="deck-name">English for IT</div>
+          </div>
+          <button class="change">Change</button>
+        </section>
+
+        <section class="quick-card">
+          <div class="quick-content">
+            <div class="quick-meta">
+              <span class="pulse"></span>
+              5 cards • about 2 min
+            </div>
+
+            <h2 class="quick-title">Quick<br/>Lesson</h2>
+            <p class="quick-desc">
+              Review five cards from your active deck. Calm, focused, and done fast.
+            </p>
+
+            <div class="quick-bottom">
+              <button class="start">Start now</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="continue-row">
+          <article class="mini-card dark">
+            <div class="mini-top">
+              <div>
+                <h3 class="mini-title">Continue learning</h3>
+                <p class="mini-sub">Resume where you stopped.</p>
+              </div>
+              <div class="mini-icon">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M8 5v14l11-7-11-7z" fill="currentColor" stroke="none"/>
+                </svg>
+              </div>
+            </div>
+            <p class="mini-sub">22 cards waiting</p>
+          </article>
+
+          <article class="mini-card">
+            <div class="mini-top">
+              <div>
+                <h3 class="mini-title">Browse sets</h3>
+                <p class="mini-sub">Your decks and ready-made packs.</p>
+              </div>
+              <div class="mini-icon">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v7H4zM13 14h7v7h-7z" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+            <p class="mini-sub">50 cards active</p>
+          </article>
+        </section>
+      </section>
+
+      <nav class="bottom-nav">
+        <div class="nav-item active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5z" stroke-linejoin="round"/>
+          </svg>
+          Home
+        </div>
+        <div class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v7H4zM13 14h7v7h-7z" stroke-linejoin="round"/>
+          </svg>
+          Sets
+        </div>
+        <div class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="m16.5 16.5 4 4" stroke-linecap="round"/>
+          </svg>
+          Explore
+        </div>
+        <div class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M5 20V10M12 20V4M19 20v-7" stroke-linecap="round"/>
+          </svg>
+          Stats
+        </div>
+      </nav>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LingoFlow — My Sets Design</title>
+  <style>
+    :root {
+      --bg: #f7f4ee;
+      --ink: #141613;
+      --muted: #6f766f;
+      --card: rgba(255,255,255,.78);
+      --green: #247a4d;
+      --green-dark: #165738;
+      --green-soft: #e2f4e9;
+      --active-tint: rgba(36, 122, 77, .055);
+      --active-border: rgba(36, 122, 77, .14);
+      --shadow: 0 20px 55px rgba(42, 38, 30, .11);
+      --shadow-soft: 0 10px 28px rgba(42, 38, 30, .07);
+      --radius-xl: 38px;
+      --radius-lg: 30px;
+      --radius-md: 24px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 14% 8%, rgba(61,166,106,.22), transparent 28%),
+        radial-gradient(circle at 88% 15%, rgba(240,163,58,.18), transparent 26%),
+        #e9e5dc;
+    }
+
+    button { font-family: inherit; }
+
+    .phone {
+      width: 390px;
+      height: 844px;
+      border-radius: 42px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.74), rgba(247,244,238,.98) 40%),
+        var(--bg);
+      box-shadow: 0 30px 90px rgba(20, 18, 14, .24);
+      position: relative;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(rgba(255,255,255,.32) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.32) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.42), transparent 48%);
+      pointer-events: none;
+    }
+
+    .screen {
+      height: 100%;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      height: 72px;
+      padding: 18px 22px 8px;
+      display: grid;
+      grid-template-columns: 42px 1fr 42px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .brand {
+      text-align: center;
+      font-weight: 850;
+      letter-spacing: -0.025em;
+      font-size: 21px;
+    }
+
+    .icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.75);
+      background: rgba(255,255,255,.62);
+      backdrop-filter: blur(14px);
+      color: #657067;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 1px 0 rgba(255,255,255,.9) inset;
+      cursor: pointer;
+    }
+
+    .icon svg,
+    .nav-item svg,
+    .set-action svg,
+    .more svg,
+    .plus svg {
+      width: 20px;
+      height: 20px;
+      stroke-width: 2.2;
+    }
+
+    .content {
+      padding: 8px 20px 112px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .content::-webkit-scrollbar { display: none; }
+
+    .hero {
+      margin-top: 4px;
+      margin-bottom: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: end;
+    }
+
+    .headline {
+      margin: 0;
+      max-width: 245px;
+      font-size: 34px;
+      line-height: 1.03;
+      font-weight: 890;
+      letter-spacing: -0.04em;
+    }
+
+    .hero-copy {
+      margin: 9px 0 0;
+      max-width: 230px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+      font-weight: 560;
+    }
+
+    .stat-card {
+      width: 78px;
+      height: 78px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(36,122,77,.12), transparent 48%),
+        rgba(255,255,255,.72);
+      border: 1px solid rgba(255,255,255,.82);
+      box-shadow: var(--shadow-soft);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .stat-card strong {
+      font-size: 27px;
+      line-height: 1;
+      letter-spacing: -0.05em;
+    }
+
+    .stat-card span {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .14em;
+      font-weight: 780;
+      margin-top: 5px;
+    }
+
+    .create-card {
+      width: 100%;
+      min-height: 154px;
+      border: 1.5px dashed rgba(36,122,77,.20);
+      border-radius: 32px;
+      background:
+        radial-gradient(circle at 50% -10%, rgba(36,122,77,.09), transparent 45%),
+        rgba(255,255,255,.62);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 12px 30px rgba(42, 38, 30, .045);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      cursor: pointer;
+      text-align: center;
+      color: var(--ink);
+    }
+
+    .plus {
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #319b63, #247a4d);
+      color: white;
+      display: grid;
+      place-items: center;
+      margin-bottom: 13px;
+      box-shadow: 0 12px 24px rgba(36,122,77,.22);
+    }
+
+    .create-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+    }
+
+    .create-sub {
+      margin: 8px 0 0;
+      max-width: 260px;
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.38;
+    }
+
+    .section-head {
+      margin: 22px 2px 12px;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      color: var(--ink);
+      font-weight: 820;
+    }
+
+    .section-helper {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 560;
+    }
+
+    .section-count {
+      color: var(--green);
+      background: rgba(36,122,77,.08);
+      border: 1px solid rgba(36,122,77,.10);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .sets-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .set-card {
+      position: relative;
+      min-height: 134px;
+      border-radius: 30px;
+      background: var(--card);
+      border: 1px solid rgba(255,255,255,.82);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-soft);
+      padding: 20px 18px 18px;
+      overflow: hidden;
+    }
+
+    .set-card.active {
+      background:
+        linear-gradient(90deg, var(--active-tint), rgba(255,255,255,.76) 36%),
+        var(--card);
+      border-color: rgba(255,255,255,.86);
+      box-shadow: 0 16px 38px rgba(36,122,77,.12), var(--shadow-soft);
+      padding-left: 23px;
+    }
+
+    .set-card.active::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+      background: linear-gradient(180deg, #5bc487, #247a4d);
+      border-radius: 999px;
+    }
+
+    .set-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .set-title-wrap { min-width: 0; }
+
+    .set-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .set-title {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 850;
+      letter-spacing: -0.025em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pill {
+      flex: 0 0 auto;
+      height: 26px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green-dark);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 820;
+    }
+
+    .pill::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--green);
+      margin-right: 5px;
+    }
+
+    .set-meta {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 540;
+    }
+
+    .more {
+      width: 34px;
+      height: 34px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(20,22,19,.045);
+      color: #697169;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      cursor: pointer;
+    }
+
+    .set-bottom {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 27px;
+    }
+
+    .progress {
+      flex: 1;
+      max-width: 118px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(111,118,111,.22);
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #247a4d, #58b77e);
+    }
+
+    .set-action {
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #319b63, #247a4d);
+      color: white;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 10px 22px rgba(36,122,77,.18);
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      height: 74px;
+      border-radius: 28px;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,.86);
+      box-shadow:
+        0 18px 42px rgba(30, 50, 40, 0.15),
+        0 4px 12px rgba(30, 50, 40, 0.06),
+        inset 0 1px 0 rgba(255,255,255,0.95);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      align-items: center;
+      padding: 8px;
+      z-index: 20;
+    }
+
+    .nav-item {
+      height: 58px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 780;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .nav-item.active {
+      background: var(--green-soft);
+      color: var(--green);
+      box-shadow:
+        0 4px 12px rgba(36, 122, 77, 0.08),
+        inset 0 1px 0 rgba(255,255,255,0.7);
+    }
+
+    @media (max-width: 430px) {
+      body { background: var(--bg); }
+      .phone {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <section class="screen">
+      <header class="topbar">
+        <button class="icon" aria-label="Open menu">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <div class="brand">LingoFlow</div>
+
+        <button class="icon" aria-label="Profile and settings">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M20 21a8 8 0 0 0-16 0" stroke-linecap="round"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+        </button>
+      </header>
+
+      <section class="content">
+        <section class="hero">
+          <div>
+            <h1 class="headline">Your sets</h1>
+            <p class="hero-copy">Choose what you want to learn today.</p>
+          </div>
+
+          <div class="stat-card" aria-label="2 sets">
+            <strong>2</strong>
+            <span>sets</span>
+          </div>
+        </section>
+
+        <button class="create-card" aria-label="Create new set">
+          <span class="plus">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path d="M12 5v14M5 12h14" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <h2 class="create-title">Create new set</h2>
+          <p class="create-sub">Build your own collection of words and phrases.</p>
+        </button>
+
+        <div class="section-head">
+          <div>
+            <div class="section-label">My sets</div>
+            <div class="section-helper">Your custom collections</div>
+          </div>
+          <div class="section-count">1 set</div>
+        </div>
+
+        <section class="sets-stack">
+          <article class="set-card">
+            <div class="set-top">
+              <div class="set-title-wrap">
+                <h3 class="set-title">English for Beginners</h3>
+                <p class="set-meta">2 cards · Last practiced yesterday</p>
+              </div>
+
+              <button class="more" aria-label="More options">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M12 6.5h.01M12 12h.01M12 17.5h.01" stroke-linecap="round" stroke-width="3.2"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="set-bottom">
+              <div class="progress" aria-label="Progress">
+                <span style="width: 46%"></span>
+              </div>
+
+              <button class="set-action" aria-label="Open set">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </article>
+        </section>
+
+        <div class="section-head">
+          <div>
+            <div class="section-label">Ready-made</div>
+            <div class="section-helper">Curated sets to start quickly</div>
+          </div>
+          <div class="section-count">1 set</div>
+        </div>
+
+        <section class="sets-stack">
+          <article class="set-card active">
+            <div class="set-top">
+              <div class="set-title-wrap">
+                <div class="set-title-row">
+                  <h3 class="set-title">English for IT</h3>
+                  <span class="pill">Active</span>
+                </div>
+                <p class="set-meta">50 cards · Last practiced 2h ago</p>
+              </div>
+            </div>
+
+            <div class="set-bottom">
+              <div class="progress" aria-label="Progress">
+                <span style="width: 34%"></span>
+              </div>
+
+              <button class="set-action" aria-label="Open set">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </article>
+        </section>
+      </section>
+
+      <nav class="bottom-nav">
+        <div class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8.5z" stroke-linejoin="round"/>
+          </svg>
+          Home
+        </div>
+        <div class="nav-item active">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v7H4zM13 14h7v7h-7z" stroke-linejoin="round"/>
+          </svg>
+          Sets
+        </div>
+        <div class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <circle cx="11" cy="11" r="7"/>
+            <path d="m16.5 16.5 4 4" stroke-linecap="round"/>
+          </svg>
+          Explore
+        </div>
+        <div class="nav-item">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M5 20V10M12 20V4M19 20v-7" stroke-linecap="round"/>
+          </svg>
+          Stats
+        </div>
+      </nav>
+    </section>
+  </main>
+</body>
+</html>
