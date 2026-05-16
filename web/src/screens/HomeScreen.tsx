@@ -3,7 +3,6 @@ type QuickLessonState = "ready" | "completed";
 type HomeScreenProps = {
   activeSetName: string;
   activeSetCardCount: number;
-  continueCardCount: number;
   quickLessonCardCount: number;
   quickLessonState: QuickLessonState;
   onBrowseSets: () => void;
@@ -15,7 +14,6 @@ type HomeScreenProps = {
 export function HomeScreen({
   activeSetName,
   activeSetCardCount,
-  continueCardCount,
   quickLessonCardCount,
   quickLessonState,
   onBrowseSets,
@@ -111,19 +109,17 @@ export function HomeScreen({
       </article>
 
       <section className="dashboard-action-grid" aria-label="Learning actions">
-        <button type="button" className="mini-action-card dark" onClick={onContinueLearning}>
-          <span className="mini-action-top">
-            <span>
-              <span className="mini-action-title">Continue learning</span>
-              <span className="mini-action-subtitle">
-                Resume where you stopped and keep the flow going.
-              </span>
+        <button type="button" className="practice-card" onClick={onContinueLearning}>
+          <span className="practice-card-copy">
+            <span className="practice-card-title">Practice cards</span>
+            <span className="practice-card-subtitle">
+              Review cards from your active set at your own pace.
             </span>
-            <span className="mini-action-icon" aria-hidden>
-              <PlayIcon />
-            </span>
+            <span className="practice-card-count">{activeSetCardCount} cards ready</span>
           </span>
-          <span className="mini-action-subtitle">{continueCardCount} cards waiting</span>
+          <span className="practice-card-icon" aria-hidden>
+            <PlayIcon />
+          </span>
         </button>
 
         <button type="button" className="mini-action-card" onClick={onBrowseSets}>

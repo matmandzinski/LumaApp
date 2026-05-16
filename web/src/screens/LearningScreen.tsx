@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { AppButton } from "../components/ui";
 
 type LearningCard = {
@@ -277,11 +277,13 @@ type FlashcardFacesProps = {
 };
 
 const FlashcardFaces = memo(function FlashcardFaces({ card, isRevealed }: FlashcardFacesProps) {
+  const termStyle = getLearningTextStyle(card.term);
+
   return (
     <>
       <span className="flashcard-face flashcard-front" aria-hidden={isRevealed}>
         <span className="card-number">{card.label}</span>
-        <span className="learning-term">{card.term}</span>
+        <span className="learning-term" style={termStyle}>{card.term}</span>
         <span className="learning-answer">
           <span className="hint-dot" />
           {card.prompt}
@@ -295,3 +297,15 @@ const FlashcardFaces = memo(function FlashcardFaces({ card, isRevealed }: Flashc
     </>
   );
 });
+
+function getLearningTextStyle(text: string): CSSProperties {
+  const normalizedText = text.trim();
+  const longestWordLength = normalizedText
+    .split(/\s+/)
+    .reduce((maxLength, word) => Math.max(maxLength, word.length), 0);
+  const size = 2.35 - Math.max(0, longestWordLength - 12) * 0.09 - Math.max(0, normalizedText.length - 28) * 0.025;
+
+  return {
+    "--learning-term-size": `${Math.max(1.48, size).toFixed(2)}rem`,
+  } as CSSProperties;
+}

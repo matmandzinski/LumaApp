@@ -20,6 +20,8 @@ type HomeRoute =
 type SetsRoute = "list" | "details";
 
 const QUICK_LESSON_CARD_LIMIT = 5;
+const USER_SETS_STORAGE_KEY = "simple-flashcards:user-sets";
+const DUPLICATE_SET_NAME_ERROR = "A set with this name already exists.";
 
 type LearningSessionItem = {
   card: Flashcard;
@@ -59,8 +61,63 @@ function moveActiveCardToEnd(queue: LearningSessionItem[]): LearningSessionItem[
   return [...remainingCards, repeatedCard];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isStoredFlashcard(value: unknown): value is Flashcard {
+  return (
+    isRecord(value) &&
+    typeof value.front === "string" &&
+    typeof value.back === "string"
+  );
+}
+
+function loadUserSets() {
+  try {
+    const rawSets = window.localStorage.getItem(USER_SETS_STORAGE_KEY);
+    if (!rawSets) return [];
+
+    const parsedSets: unknown = JSON.parse(rawSets);
+    if (!Array.isArray(parsedSets)) return [];
+
+    return parsedSets.flatMap((set): FlashcardSet[] => {
+      if (!isRecord(set) || typeof set.id !== "string" || typeof set.name !== "string") {
+        return [];
+      }
+
+      return [
+        {
+          id: set.id,
+          name: set.name,
+          source: "User",
+          readonly: false,
+          flashcards: Array.isArray(set.flashcards)
+            ? set.flashcards.filter(isStoredFlashcard)
+            : [],
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function saveUserSets(sets: FlashcardSet[]) {
+  try {
+    window.localStorage.setItem(USER_SETS_STORAGE_KEY, JSON.stringify(sets));
+  } catch {
+    // Persisting user-created sets is best-effort in browser storage.
+  }
+}
+
+function createUserSetId() {
+  return `user-${crypto.randomUUID?.() ?? Date.now().toString(36)}`;
+}
+
 export function App() {
   const initialSet = defaultSets[0];
+  const [userSets, setUserSets] = useState<FlashcardSet[]>(loadUserSets);
   const [activeTab, setActiveTab] = useState<AppViewId>("home");
   const [homeRoute, setHomeRoute] = useState<HomeRoute>("dashboard");
   const [setsRoute, setSetsRoute] = useState<SetsRoute>("list");
@@ -72,6 +129,7 @@ export function App() {
   const [learningPassedCount, setLearningPassedCount] = useState(0);
   const [learningQueue, setLearningQueue] = useState<LearningSessionItem[]>([]);
 
+  const allSets = useMemo(() => [...userSets, ...defaultSets], [userSets]);
   const quickLessonCardTotal = Math.min(QUICK_LESSON_CARD_LIMIT, selectedSet.flashcards.length);
   const learningCardTotal = selectedSet.flashcards.length;
 
@@ -131,6 +189,55 @@ export function App() {
     setActiveTab("settings");
   }
 
+  function updateUserSet(setId: string, updateSet: (set: FlashcardSet) => FlashcardSet) {
+    setUserSets((currentSets) => {
+      let updatedSet: FlashcardSet | null = null;
+      const updatedSets = currentSets.map((set) => {
+        if (set.id !== setId) return set;
+
+        updatedSet = updateSet(set);
+        return updatedSet;
+      });
+
+      if (!updatedSet) return currentSets;
+
+      const nextSet = updatedSet;
+      saveUserSets(updatedSets);
+      setSelectedSet((currentSet) => (currentSet.id === setId ? nextSet : currentSet));
+      setViewedSet((currentSet) => (currentSet.id === setId ? nextSet : currentSet));
+      return updatedSets;
+    });
+  }
+
+  function addCardToSet(set: FlashcardSet, card: Flashcard) {
+    if (set.source !== "User") return;
+
+    updateUserSet(set.id, (currentSet) => ({
+      ...currentSet,
+      flashcards: [card, ...currentSet.flashcards],
+    }));
+  }
+
+  function updateCardInSet(set: FlashcardSet, cardIndex: number, card: Flashcard) {
+    if (set.source !== "User") return;
+
+    updateUserSet(set.id, (currentSet) => ({
+      ...currentSet,
+      flashcards: currentSet.flashcards.map((currentCard, index) =>
+        index === cardIndex ? card : currentCard,
+      ),
+    }));
+  }
+
+  function deleteCardFromSet(set: FlashcardSet, cardIndex: number) {
+    if (set.source !== "User") return;
+
+    updateUserSet(set.id, (currentSet) => ({
+      ...currentSet,
+      flashcards: currentSet.flashcards.filter((_, index) => index !== cardIndex),
+    }));
+  }
+
   function selectSet(set: FlashcardSet) {
     setSelectedSet(set);
     setViewedSet(set);
@@ -144,6 +251,53 @@ export function App() {
   function openSetDetails(set: FlashcardSet) {
     setViewedSet(set);
     setSetsRoute("details");
+  }
+
+  function createUserSet(name: string) {
+    const setName = name.trim();
+    const normalizedName = setName.toLocaleLowerCase();
+    const hasDuplicateName = allSets.some(
+      (set) => set.name.trim().toLocaleLowerCase() === normalizedName,
+    );
+
+    if (hasDuplicateName) {
+      return DUPLICATE_SET_NAME_ERROR;
+    }
+
+    const newSet: FlashcardSet = {
+      id: createUserSetId(),
+      name: setName,
+      source: "User",
+      readonly: false,
+      flashcards: [],
+    };
+
+    setUserSets((currentSets) => {
+      const updatedSets = [newSet, ...currentSets];
+      saveUserSets(updatedSets);
+      return updatedSets;
+    });
+
+    return null;
+  }
+
+  function deleteUserSet(setToDelete: FlashcardSet) {
+    if (setToDelete.source !== "User") return;
+
+    setUserSets((currentSets) => {
+      const updatedSets = currentSets.filter((set) => set.id !== setToDelete.id);
+      saveUserSets(updatedSets);
+      return updatedSets;
+    });
+
+    if (selectedSet.id === setToDelete.id) {
+      selectSet(defaultSets[0]);
+      return;
+    }
+
+    if (viewedSet.id === setToDelete.id) {
+      setViewedSet(selectedSet);
+    }
   }
 
   function startQuickLesson() {
@@ -190,6 +344,22 @@ export function App() {
     setHomeRoute("dashboard");
   }
 
+  function getTopBarBackHandler() {
+    if (activeTab === "sets" && setsRoute === "details") {
+      return () => setSetsRoute("list");
+    }
+
+    if (activeTab === "home" && homeRoute === "setDetails") {
+      return () => setHomeRoute("dashboard");
+    }
+
+    if (activeTab === "home" && homeRoute === "readyMade") {
+      return () => setHomeRoute("dashboard");
+    }
+
+    return undefined;
+  }
+
   function renderHome() {
     if (homeRoute === "quickLesson") {
       const activeQueueItem = quickLessonQueue[0];
@@ -210,9 +380,11 @@ export function App() {
           <SetDetailsScreen
             set={selectedSet}
             isActive
-            onBack={() => setHomeRoute("dashboard")}
+            onAddCard={addCardToSet}
+            onDeleteCard={deleteCardFromSet}
             onSetActive={() => selectSet(selectedSet)}
             onStartQuickLesson={startQuickLesson}
+            onUpdateCard={updateCardInSet}
           />
         );
       }
@@ -278,9 +450,11 @@ export function App() {
         <SetDetailsScreen
           set={selectedSet}
           isActive
-          onBack={() => setHomeRoute("dashboard")}
+          onAddCard={addCardToSet}
+          onDeleteCard={deleteCardFromSet}
           onSetActive={() => selectSet(selectedSet)}
           onStartQuickLesson={startQuickLesson}
+          onUpdateCard={updateCardInSet}
         />
       );
     }
@@ -300,9 +474,11 @@ export function App() {
         <SetDetailsScreen
           set={selectedSet}
           isActive
-          onBack={() => setHomeRoute("dashboard")}
+          onAddCard={addCardToSet}
+          onDeleteCard={deleteCardFromSet}
           onSetActive={() => selectSet(selectedSet)}
           onStartQuickLesson={startQuickLesson}
+          onUpdateCard={updateCardInSet}
         />
       );
     }
@@ -315,7 +491,6 @@ export function App() {
       <HomeScreen
         activeSetName={selectedSet.name}
         activeSetCardCount={selectedSet.flashcards.length}
-        continueCardCount={learningQueue.length > 0 ? learningQueue.length : learningCardTotal}
         quickLessonCardCount={quickLessonCardTotal}
         quickLessonState={quickLessonCompleted ? "completed" : "ready"}
         onBrowseSets={() => openTab("sets")}
@@ -332,20 +507,25 @@ export function App() {
         <SetDetailsScreen
           set={viewedSet}
           isActive={viewedSet.id === selectedSet.id}
-          onBack={() => setSetsRoute("list")}
+          onAddCard={addCardToSet}
+          onDeleteCard={deleteCardFromSet}
           onSetActive={() => selectSet(viewedSet)}
           onStartQuickLesson={() => {
             setActiveTab("home");
             startQuickLesson();
           }}
+          onUpdateCard={updateCardInSet}
         />
       );
     }
     return (
       <SetsScreen
-        sets={defaultSets}
+        sets={allSets}
         activeSetId={selectedSet.id}
+        onCreateSet={createUserSet}
+        onDeleteSet={deleteUserSet}
         onOpenSetDetails={openSetDetails}
+        onSetActive={selectSet}
       />
     );
   }
@@ -353,6 +533,7 @@ export function App() {
   return (
     <AppChrome
       activeTab={activeTab}
+      onBack={getTopBarBackHandler()}
       onProfileOpen={openProfileSettings}
       onTabChange={openTab}
       showBottomNav={showBottomNav}

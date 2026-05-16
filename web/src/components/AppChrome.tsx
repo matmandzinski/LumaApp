@@ -6,6 +6,7 @@ import { TopBar } from "./ui";
 type AppChromeProps = {
   activeTab: AppViewId;
   children: ReactNode;
+  onBack?: () => void;
   onProfileOpen: () => void;
   onTabChange: (tab: TabId) => void;
   showBottomNav: boolean;
@@ -15,14 +16,15 @@ type AppChromeProps = {
 export function AppChrome({
   activeTab,
   children,
+  onBack,
   onProfileOpen,
   onTabChange,
   showBottomNav,
   showTopBar = true,
 }: AppChromeProps) {
   return (
-    <div className="app-shell">
-      {showTopBar ? <TopBar title="LingoFlow" onProfileOpen={onProfileOpen} /> : null}
+    <div className={`app-shell ${showBottomNav ? "has-bottom-nav" : ""}`.trim()}>
+      {showTopBar ? <TopBar title="LingoFlow" onBack={onBack} onProfileOpen={onProfileOpen} /> : null}
 
       <main className="screen-frame">{children}</main>
 

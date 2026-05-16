@@ -48,21 +48,36 @@ export function MetaText({ children }: PropsWithChildren) {
 }
 
 type TopBarProps = {
+  onBack?: () => void;
   onProfileOpen: () => void;
   title: string;
 };
 
-export function TopBar({ onProfileOpen, title }: TopBarProps) {
+export function TopBar({ onBack, onProfileOpen, title }: TopBarProps) {
   return (
     <header className="top-bar" aria-label={title}>
-      <button type="button" className="icon-chip" aria-label="Menu">
-        <MenuIcon />
+      <button
+        type="button"
+        className="icon-chip"
+        aria-label={onBack ? "Back" : "Menu"}
+        onClick={onBack}
+      >
+        {onBack ? <BackIcon /> : <MenuIcon />}
       </button>
       <p className="top-bar-title">{title}</p>
       <button type="button" className="icon-chip" aria-label="Profile" onClick={onProfileOpen}>
         <ProfileIcon />
       </button>
     </header>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden>
+      <path d="M19 12H5" />
+      <path d="m11 6-6 6 6 6" />
+    </svg>
   );
 }
 
