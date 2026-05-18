@@ -22,6 +22,14 @@ public class Flashcard
     /// <summary>UTC instant when the card is due (nullable if never reviewed).</summary>
     public DateTime? NextReviewUtc { get; set; }
 
+    public int LearningStage { get; set; }
+
+    public int ReviewAgainStreak { get; set; }
+
+    public bool IsLearned { get; set; }
+
+    public DateTime? LastReviewedAt { get; set; }
+
     [JsonIgnore]
     public bool HasScheduling =>
         NextReviewUtc.HasValue || Repetitions > 0 || IntervalDays > 0;

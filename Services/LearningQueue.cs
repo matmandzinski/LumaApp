@@ -5,17 +5,30 @@ namespace SimpleFlashCards.Services;
 public class LearningQueue
 {
     private readonly List<Flashcard> _items;
+    private readonly Random _random;
 
-    public LearningQueue(IEnumerable<Flashcard> flashcards)
+    public LearningQueue(IEnumerable<Flashcard> flashcards, Random? random = null)
     {
         _items = flashcards.ToList();
+        _random = random ?? Random.Shared;
     }
 
-    public static LearningQueue CreateShuffled(IEnumerable<Flashcard> flashcards, Random? random = null)
+    public static LearningQueue CreateShuffled(
+        IEnumerable<Flashcard> flashcards,
+        Random? random = null,
+        int? limit = null)
     {
-        var items = flashcards.ToList();
-        Shuffle(items, random ?? Random.Shared);
-        return new LearningQueue(items);
+        random ??= Random.Shared;
+        var items = flashcards
+            .Where(card => !card.IsLearned)
+            .ToList();
+
+        Shuffle(items, random);
+
+        if (limit.HasValue)
+            items = items.Take(limit.Value).ToList();
+
+        return new LearningQueue(items, random);
     }
 
     public bool HasCards => _items.Count > 0;
@@ -35,21 +48,100 @@ public class LearningQueue
     /// <summary>Puts the card back at the front (e.g. user exited without Repeat/Know it).</summary>
     public void ReturnToFront(Flashcard card)
     {
+        RemoveQueuedCopies(card);
         _items.Insert(0, card);
     }
 
     public void MarkAsKnown(Flashcard card)
     {
-        // Card already removed by GetNext — nothing to do.
+        MarkKnown(card, allowReinsert: false);
     }
 
     public void MarkAsUnknown(Flashcard card)
     {
-        _items.Add(card);
+        MarkReviewAgain(card, allowReinsert: true);
+    }
+
+    public void MarkKnown(Flashcard card, bool allowReinsert)
+    {
+        card.LastReviewedAt = DateTime.Now;
+        card.ReviewAgainStreak = 0;
+
+        if (card.LearningStage <= 0)
+        {
+            card.LearningStage = 1;
+            card.IsLearned = false;
+
+            if (allowReinsert)
+                InsertCardLater(card, 10, 20);
+
+            return;
+        }
+
+        if (card.LearningStage == 1)
+        {
+            card.LearningStage = 2;
+            card.IsLearned = false;
+
+            if (allowReinsert)
+                InsertCardLater(card, 40, 50);
+
+            return;
+        }
+
+        if (card.LearningStage >= 2)
+        {
+            card.LearningStage = 3;
+            card.IsLearned = true;
+        }
+    }
+
+    public void MarkReviewAgain(Flashcard card, bool allowReinsert)
+    {
+        card.LastReviewedAt = DateTime.Now;
+        card.ReviewAgainStreak++;
+
+        if (card.LearningStage == -1 || card.ReviewAgainStreak >= 2)
+        {
+            card.LearningStage = -1;
+            card.IsLearned = false;
+
+            if (allowReinsert)
+                InsertCardLater(card, 3, 5);
+
+            return;
+        }
+
+        card.IsLearned = false;
+
+        if (allowReinsert)
+            InsertCardLater(card, 5, 10);
+    }
+
+    public void InsertCardLater(Flashcard card, int min, int max)
+    {
+        if (min < 0)
+            throw new ArgumentOutOfRangeException(nameof(min));
+
+        if (max < min)
+            throw new ArgumentOutOfRangeException(nameof(max));
+
+        RemoveQueuedCopies(card);
+
+        var delay = _random.Next(max - min + 1) + min;
+        var insertIndex = Math.Min(delay, _items.Count);
+        _items.Insert(insertIndex, card);
     }
 
     /// <summary>Current queue order from front to back.</summary>
     public IReadOnlyList<Flashcard> Snapshot() => _items.ToList();
+
+    private void RemoveQueuedCopies(Flashcard card)
+    {
+        _items.RemoveAll(queuedCard =>
+            card.Id != Guid.Empty && queuedCard.Id == card.Id ||
+            ReferenceEquals(queuedCard, card));
+    }
 
     private static void Shuffle(List<Flashcard> items, Random random)
     {

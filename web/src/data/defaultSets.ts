@@ -3,6 +3,10 @@ import defaultSetsJson from "../../../Data/default_sets.json";
 export type Flashcard = {
   front: string;
   back: string;
+  learningStage: number;
+  reviewAgainStreak: number;
+  isLearned: boolean;
+  lastReviewedAt: string | null;
 };
 
 export type FlashcardSetSource = "User" | "ReadyMade";
@@ -34,6 +38,10 @@ export const defaultSets: FlashcardSet[] = (defaultSetsJson as DefaultSetJson[])
     flashcards: set.Flashcards.map((card) => ({
       front: card.Front,
       back: card.Back,
+      learningStage: 0,
+      reviewAgainStreak: 0,
+      isLearned: false,
+      lastReviewedAt: null,
     })),
   }),
 );

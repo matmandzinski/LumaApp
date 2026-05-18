@@ -1,9 +1,15 @@
-type QuickLessonState = "ready" | "completed";
+type QuickLessonState = "ready" | "completed" | "caughtUp";
 
 type HomeScreenProps = {
   activeSetName: string;
   activeSetCardCount: number;
+  currentStreak: number;
+  difficultCardCount: number;
+  learnedCardCount: number;
+  learningCardCount: number;
+  practiceCardsLabel: string;
   quickLessonCardCount: number;
+  quickLessonLabel: string;
   quickLessonState: QuickLessonState;
   onBrowseSets: () => void;
   onStartQuickLesson: () => void;
@@ -14,7 +20,13 @@ type HomeScreenProps = {
 export function HomeScreen({
   activeSetName,
   activeSetCardCount,
+  currentStreak,
+  difficultCardCount,
+  learnedCardCount,
+  learningCardCount,
+  practiceCardsLabel,
   quickLessonCardCount,
+  quickLessonLabel,
   quickLessonState,
   onBrowseSets,
   onStartQuickLesson,
@@ -22,6 +34,9 @@ export function HomeScreen({
   onOpenActiveSet,
 }: HomeScreenProps) {
   const quickLessonIsComplete = quickLessonState === "completed";
+  const quickLessonIsCaughtUp = quickLessonState === "caughtUp";
+  const quickLessonIsUnavailable = quickLessonIsComplete || quickLessonIsCaughtUp;
+  const streakLabel = formatHomeStreakLabel(currentStreak);
 
   return (
     <div className="screen-content home-screen">
@@ -35,30 +50,32 @@ export function HomeScreen({
           </h1>
         </div>
 
-        <article className="streak-card" aria-label="12 day streak">
+        <article className="streak-card" aria-label={`Learning streak: ${streakLabel}`}>
           <FlameIcon />
-          <strong>12</strong>
-          <span>days</span>
+          <strong className={currentStreak === 0 ? "streak-card-word" : undefined}>
+            {currentStreak === 0 ? "Start" : currentStreak}
+          </strong>
+          <span>{currentStreak === 0 ? "today" : currentStreak === 1 ? "day" : "days"}</span>
         </article>
       </section>
 
       <section className={`premium-quick-card ${quickLessonState}`}>
         <div className="quick-lightning-badge" aria-hidden>
-          {quickLessonIsComplete ? <CheckIcon /> : <LightningIcon />}
+          {quickLessonIsComplete || quickLessonIsCaughtUp ? <CheckIcon /> : <LightningIcon />}
         </div>
 
         <div className="quick-card-content">
-          {quickLessonIsComplete ? (
+          {quickLessonIsComplete || quickLessonIsCaughtUp ? (
             <div className="quick-complete-pill">
               <span aria-hidden>
                 <CheckIcon />
               </span>
-              Quick lesson completed
+              {quickLessonIsCaughtUp ? "All caught up" : "Quick lesson completed"}
             </div>
           ) : (
             <div className="quick-meta-pill">
               <span aria-hidden />
-              {quickLessonCardCount} cards - about 2 min
+              {quickLessonLabel}
             </div>
           )}
 
@@ -72,18 +89,20 @@ export function HomeScreen({
             </h2>
           )}
           <p className="quick-description">
-            {quickLessonIsComplete
-              ? "Your quick lesson is complete. You can keep learning below, or take a break and come back for the next one later."
-              : "Review five cards from your active deck. Calm, focused, and done fast."}
+            {quickLessonIsCaughtUp
+              ? "Every card in this deck is learned for now. Practice opens again when new cards are added."
+              : quickLessonIsComplete
+                ? "Your quick lesson is complete. You can keep learning below, or take a break and come back for the next one later."
+                : `Review up to ${quickLessonCardCount} cards from your active deck. Calm, focused, and done fast.`}
           </p>
 
           <button
             type="button"
             className="start-now-btn"
             onClick={onStartQuickLesson}
-            disabled={quickLessonIsComplete}
+            disabled={quickLessonIsUnavailable}
           >
-            {quickLessonIsComplete ? "Done for now" : "Start now"}
+            {quickLessonIsCaughtUp ? "All caught up" : quickLessonIsComplete ? "Done for now" : "Start now"}
           </button>
         </div>
       </section>
@@ -101,6 +120,9 @@ export function HomeScreen({
               <span className="active-deck-name">{activeSetName}</span>
               <span className="active-deck-count">{activeSetCardCount} cards</span>
             </span>
+            <span className="active-deck-progress">
+              {learnedCardCount} learned - {learningCardCount} learning - {difficultCardCount} difficult
+            </span>
           </span>
         </button>
         <button type="button" className="change-deck-btn" onClick={onBrowseSets}>
@@ -115,7 +137,7 @@ export function HomeScreen({
             <span className="practice-card-subtitle">
               Review cards from your active set at your own pace.
             </span>
-            <span className="practice-card-count">{activeSetCardCount} cards ready</span>
+            <span className="practice-card-count">{practiceCardsLabel}</span>
           </span>
           <span className="practice-card-icon" aria-hidden>
             <PlayIcon />
@@ -137,6 +159,12 @@ export function HomeScreen({
       </section>
     </div>
   );
+}
+
+function formatHomeStreakLabel(currentStreak: number) {
+  if (currentStreak <= 0) return "Start today";
+  if (currentStreak === 1) return "1 day";
+  return `${currentStreak} days`;
 }
 
 function FlameIcon() {

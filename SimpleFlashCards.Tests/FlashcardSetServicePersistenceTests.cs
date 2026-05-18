@@ -82,6 +82,120 @@ public class FlashcardSetServicePersistenceTests : IDisposable
     }
 
     [Fact]
+    public void SaveUserSets_Persists_Card_Learning_State()
+    {
+        var service = new FlashcardSetService(_tempRoot);
+        var card = new Flashcard("x", "y")
+        {
+            LearningStage = 2,
+            ReviewAgainStreak = 0,
+            IsLearned = false,
+            LastReviewedAt = new DateTime(2026, 5, 15, 12, 30, 0)
+        };
+        service.AddUserSet(new FlashcardSet("Mine", new[] { card }));
+
+        service.SaveUserSets();
+
+        var fresh = new FlashcardSetService(_tempRoot);
+        fresh.LoadUserSets();
+
+        var loadedCard = fresh.GetUserSets()[0].Flashcards[0];
+        Assert.Equal(2, loadedCard.LearningStage);
+        Assert.Equal(0, loadedCard.ReviewAgainStreak);
+        Assert.False(loadedCard.IsLearned);
+        Assert.Equal(card.LastReviewedAt, loadedCard.LastReviewedAt);
+    }
+
+    [Fact]
+    public void LoadUserSets_Does_Not_Overwrite_User_File_Progress_With_Stale_LearningProgress()
+    {
+        var dataDir = Path.Combine(_tempRoot, "Data");
+        var card = new Flashcard("x", "y")
+        {
+            LearningStage = 3,
+            ReviewAgainStreak = 0,
+            IsLearned = true,
+            LastReviewedAt = new DateTime(2026, 5, 15, 12, 30, 0)
+        };
+        var set = new FlashcardSet("Mine", new[] { card });
+        File.WriteAllText(
+            Path.Combine(dataDir, "user_sets.json"),
+            JsonSerializer.Serialize(new List<FlashcardSet> { set }, new JsonSerializerOptions { WriteIndented = true }));
+
+        var staleProgress = new LearningProgressSnapshot
+        {
+            Cards = new List<CardLearningProgress>
+            {
+                new()
+                {
+                    SetId = set.Id,
+                    CardId = card.Id,
+                    LearningStage = 0,
+                    ReviewAgainStreak = 0,
+                    IsLearned = false,
+                    LastReviewedAt = null
+                }
+            }
+        };
+        File.WriteAllText(
+            Path.Combine(dataDir, "learning_progress.json"),
+            JsonSerializer.Serialize(staleProgress, new JsonSerializerOptions { WriteIndented = true }));
+
+        var service = new FlashcardSetService(_tempRoot);
+        service.LoadUserSets();
+
+        var loadedCard = service.GetUserSets()[0].Flashcards[0];
+        Assert.Equal(3, loadedCard.LearningStage);
+        Assert.True(loadedCard.IsLearned);
+        Assert.Equal(card.LastReviewedAt, loadedCard.LastReviewedAt);
+    }
+
+    [Fact]
+    public void LoadUserSets_Can_Migrate_Legacy_User_Progress_When_User_File_Has_Default_State()
+    {
+        var dataDir = Path.Combine(_tempRoot, "Data");
+        var card = new Flashcard("x", "y");
+        var set = new FlashcardSet("Mine", new[] { card });
+        File.WriteAllText(
+            Path.Combine(dataDir, "user_sets.json"),
+            JsonSerializer.Serialize(new List<FlashcardSet> { set }, new JsonSerializerOptions { WriteIndented = true }));
+
+        var savedProgress = new LearningProgressSnapshot
+        {
+            Cards = new List<CardLearningProgress>
+            {
+                new()
+                {
+                    SetId = set.Id,
+                    CardId = card.Id,
+                    LearningStage = -1,
+                    ReviewAgainStreak = 2,
+                    IsLearned = false,
+                    LastReviewedAt = new DateTime(2026, 5, 15, 13, 0, 0)
+                }
+            }
+        };
+        File.WriteAllText(
+            Path.Combine(dataDir, "learning_progress.json"),
+            JsonSerializer.Serialize(savedProgress, new JsonSerializerOptions { WriteIndented = true }));
+
+        var service = new FlashcardSetService(_tempRoot);
+        service.LoadUserSets();
+
+        var loadedCard = service.GetUserSets()[0].Flashcards[0];
+        Assert.Equal(-1, loadedCard.LearningStage);
+        Assert.Equal(2, loadedCard.ReviewAgainStreak);
+        Assert.False(loadedCard.IsLearned);
+        Assert.Equal(savedProgress.Cards[0].LastReviewedAt, loadedCard.LastReviewedAt);
+
+        var storedSets = JsonSerializer.Deserialize<List<FlashcardSet>>(
+            File.ReadAllText(Path.Combine(dataDir, "user_sets.json")));
+        Assert.NotNull(storedSets);
+        Assert.Equal(-1, storedSets![0].Flashcards[0].LearningStage);
+        Assert.Equal(2, storedSets[0].Flashcards[0].ReviewAgainStreak);
+    }
+
+    [Fact]
     public void AddUserSet_Forces_User_Source()
     {
         var service = new FlashcardSetService(_tempRoot);
@@ -117,6 +231,81 @@ public class FlashcardSetServicePersistenceTests : IDisposable
 
         Assert.Single(sets);
         Assert.Equal(FlashcardSetSource.ReadyMade, sets[0].Source);
+    }
+
+    [Fact]
+    public void ReadyMade_LearningProgress_Roundtrips_Without_Modifying_DefaultSets()
+    {
+        var defaultJson = """
+            [
+              {
+                "Name": "Built in",
+                "Flashcards": [
+                  { "Front": "a", "Back": "b" }
+                ]
+              }
+            ]
+            """;
+
+        var dataDir = Path.Combine(_tempRoot, "Data");
+        var defaultPath = Path.Combine(dataDir, "default_sets.json");
+        File.WriteAllText(defaultPath, defaultJson);
+
+        var service = new FlashcardSetService(_tempRoot);
+        var card = service.GetDefaultSets()[0].Flashcards[0];
+        var queue = new LearningQueue(Array.Empty<Flashcard>());
+        queue.MarkKnown(card, allowReinsert: false);
+        queue.MarkKnown(card, allowReinsert: false);
+        queue.MarkKnown(card, allowReinsert: false);
+
+        service.SaveLearningProgress();
+
+        Assert.Equal(defaultJson, File.ReadAllText(defaultPath));
+
+        var fresh = new FlashcardSetService(_tempRoot);
+        var loadedCard = fresh.GetDefaultSets()[0].Flashcards[0];
+
+        Assert.Equal(3, loadedCard.LearningStage);
+        Assert.True(loadedCard.IsLearned);
+        Assert.NotNull(loadedCard.LastReviewedAt);
+    }
+
+    [Fact]
+    public void RegisterStudyActivity_Tracks_Daily_Streak_And_Persists()
+    {
+        var service = new FlashcardSetService(_tempRoot);
+
+        service.RegisterStudyActivity(new DateOnly(2026, 5, 14));
+        service.RegisterStudyActivity(new DateOnly(2026, 5, 14));
+
+        var firstDay = service.GetLearningProgressSnapshot();
+        Assert.Equal(1, firstDay.CurrentStreak);
+        Assert.Equal(1, firstDay.LongestStreak);
+        Assert.Equal(new DateOnly(2026, 5, 14), firstDay.LastStudyDate);
+        Assert.Equal(1, firstDay.TotalStudyDays);
+
+        service.RegisterStudyActivity(new DateOnly(2026, 5, 15));
+
+        var nextDay = service.GetLearningProgressSnapshot();
+        Assert.Equal(2, nextDay.CurrentStreak);
+        Assert.Equal(2, nextDay.LongestStreak);
+        Assert.Equal(2, nextDay.TotalStudyDays);
+
+        service.RegisterStudyActivity(new DateOnly(2026, 5, 17));
+
+        var afterMissedDay = service.GetLearningProgressSnapshot();
+        Assert.Equal(1, afterMissedDay.CurrentStreak);
+        Assert.Equal(2, afterMissedDay.LongestStreak);
+        Assert.Equal(new DateOnly(2026, 5, 17), afterMissedDay.LastStudyDate);
+        Assert.Equal(3, afterMissedDay.TotalStudyDays);
+
+        var fresh = new FlashcardSetService(_tempRoot);
+        var restored = fresh.GetLearningProgressSnapshot();
+
+        Assert.Equal(afterMissedDay.CurrentStreak, restored.CurrentStreak);
+        Assert.Equal(afterMissedDay.LongestStreak, restored.LongestStreak);
+        Assert.Equal(afterMissedDay.LastStudyDate, restored.LastStudyDate);
+        Assert.Equal(afterMissedDay.TotalStudyDays, restored.TotalStudyDays);
     }
 
     [Fact]
@@ -164,6 +353,23 @@ public class FlashcardSetServicePersistenceTests : IDisposable
 
         Assert.Equal(new[] { "b", "c", "a" }, firstSnapshot);
         Assert.Equal(firstSnapshot, secondSnapshot);
+    }
+
+    [Fact]
+    public void CreateLearningSessionQueue_Uses_Only_Unlearned_Cards()
+    {
+        var learned = new Flashcard("learned", "A") { LearningStage = 3, IsLearned = true };
+        var ready = new Flashcard("ready", "B");
+        var service = new FlashcardSetService(_tempRoot);
+        var set = new FlashcardSet("Study", new[] { learned, ready });
+
+        service.AddUserSet(set);
+        service.SetActiveSet(set);
+
+        var queue = service.CreateLearningSessionQueue();
+
+        Assert.Single(queue.Snapshot());
+        Assert.Same(ready, queue.Snapshot()[0]);
     }
 
     [Fact]
@@ -226,7 +432,7 @@ public class FlashcardSetServicePersistenceTests : IDisposable
     public void Quick_Lesson_Progress_Persists_Across_Restart_For_Continue_Learning()
     {
         var dataDir = Path.Combine(_tempRoot, "Data");
-        var cards = Enumerable.Range(0, 10).Select(i => new Flashcard($"f{i}", $"b{i}")).ToList();
+        var cards = Enumerable.Range(0, 12).Select(i => new Flashcard($"f{i}", $"b{i}")).ToList();
         var set = new FlashcardSet("Big", cards);
         File.WriteAllText(
             Path.Combine(dataDir, "user_sets.json"),
@@ -236,8 +442,8 @@ public class FlashcardSetServicePersistenceTests : IDisposable
         service.LoadUserSets();
         service.SetActiveSet(service.GetUserSets()[0]);
         var queue = service.GetOrCreateQueue();
-        var session = new LearningSessionV2(queue, 5);
-        for (var i = 0; i < 5; i++)
+        var session = new LearningSessionV2(queue, 10, allowReinsert: false);
+        for (var i = 0; i < 10; i++)
         {
             var c = session.GetNext();
             session.MarkKnown(c);
@@ -253,6 +459,6 @@ public class FlashcardSetServicePersistenceTests : IDisposable
         fresh.LoadLearningQueue();
 
         var q2 = fresh.GetOrCreateQueue(rebuildIfEmpty: false);
-        Assert.Equal(5, q2.Count);
+        Assert.Equal(2, q2.Count);
     }
 }

@@ -11,8 +11,10 @@ public partial class ConsoleApplication
         var activeSet = _service.GetActiveSet();
         if (activeSet != null)
         {
+            var counts = _service.GetActiveSetLearningCounts();
             Console.WriteLine($"Active set:");
             Console.WriteLine(activeSet.Name);
+            Console.WriteLine($"{counts.LearnedCards}/{counts.TotalCards} learned, {counts.DifficultCards} difficult");
             Console.WriteLine();
         }
         else
@@ -22,10 +24,17 @@ public partial class ConsoleApplication
         }
 
         Console.WriteLine("Quick Lesson:");
-        if (_service.IsQuickLessonDone)
+        var readyCards = activeSet == null ? 0 : _service.GetActiveSetLearningCounts().ReadyCards;
+        if (activeSet == null)
+            Console.WriteLine("[ ] Pick a deck first");
+        else if (readyCards == 0)
+            Console.WriteLine("All caught up");
+        else if (_service.IsQuickLessonDone)
             Console.WriteLine("[x] Completed");
+        else if (readyCards >= 10)
+            Console.WriteLine("[ ] 10 cards - about 2 min");
         else
-            Console.WriteLine("[ ] Your 5 cards are ready");
+            Console.WriteLine($"[ ] {readyCards} cards ready");
         Console.WriteLine();
 
         Console.WriteLine("1. Start Quick Lesson");

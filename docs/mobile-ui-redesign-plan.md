@@ -148,7 +148,7 @@ States:
 Shows:
 
 * “Quick lesson ready”
-* “5 cards • 1–2 min”
+* “10 cards • about 2 min”
 
 CTA:
 

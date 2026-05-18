@@ -52,21 +52,24 @@ public partial class ConsoleApplication
 
             if (input == "n")
             {
-                SpacedRepetitionSm2.ApplyBinaryReview(card, false);
                 session.MarkUnknown(card);
             }
             else
             {
-                SpacedRepetitionSm2.ApplyBinaryReview(card, true);
                 session.MarkKnown(card);
             }
+
+            _service.RegisterStudyActivity();
 
             if (active != null && _service.IsUserOwnedSet(active))
                 _service.SaveUserSets();
 
+            _service.SaveLearningProgress();
             _service.SaveLearningQueue();
             _service.SaveLearningState();
         }
+
+        session.CommitDeferredReviews();
 
         return LearningSessionExitKind.CompletedNaturally;
     }
@@ -87,8 +90,15 @@ public partial class ConsoleApplication
             return;
         }
 
-        var queue = _service.GetOrCreateQueue();
-        var session = new LearningSessionV2(queue, 5);
+        if (_service.GetEligibleLearningCards().Count == 0)
+        {
+            Console.WriteLine("All caught up.");
+            Console.ReadKey(true);
+            return;
+        }
+
+        var queue = _service.CreateLearningSessionQueue(10);
+        var session = new LearningSessionV2(queue, 10, allowReinsert: false);
 
         var exit = RunLearningSession(session);
 
@@ -139,7 +149,14 @@ public partial class ConsoleApplication
             return;
         }
 
-        var queue = _service.GetOrCreateQueue();
+        if (_service.GetEligibleLearningCards().Count == 0)
+        {
+            Console.WriteLine("All caught up.");
+            Console.ReadKey(true);
+            return;
+        }
+
+        var queue = _service.CreateLearningSessionQueue();
         var session = new LearningSessionV2(queue, int.MaxValue);
 
         RunLearningSession(session);

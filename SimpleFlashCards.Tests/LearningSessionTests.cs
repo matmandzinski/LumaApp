@@ -59,8 +59,30 @@ public class LearningSessionTests
 
         Assert.False(session.HasNext());
         Assert.Equal(2, session.AnsweredCount);
-        Assert.Equal(new[] { c, a }, queue.Snapshot());
+        Assert.Equal(new[] { c, a, b }, queue.Snapshot());
         Assert.True(session.IsCompleted);
+    }
+
+    [Fact]
+    public void Quick_Lesson_Repeat_Does_Not_Reappear_In_Current_Session()
+    {
+        var a = new Flashcard("a", "A");
+        var b = new Flashcard("b", "B");
+        var queue = new LearningQueue(new[] { a, b });
+        var session = new LearningSessionV2(queue, 10, allowReinsert: false);
+
+        Assert.Same(a, session.GetNext());
+        session.MarkUnknown(a);
+
+        Assert.Same(b, session.GetNext());
+        session.MarkKnown(b);
+
+        Assert.False(session.HasNext());
+        Assert.Equal(2, session.AnsweredCount);
+
+        session.CommitDeferredReviews();
+
+        Assert.Empty(queue.Snapshot());
     }
 
     [Fact]

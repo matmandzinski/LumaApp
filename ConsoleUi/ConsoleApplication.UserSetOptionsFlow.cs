@@ -25,7 +25,7 @@ public partial class ConsoleApplication
             {
                 case "1":
                     _service.SetActiveSet(set);
-                    var queue = _service.GetOrCreateQueue();
+                    var queue = _service.CreateLearningSessionQueue();
                     var session = new LearningSessionV2(queue, int.MaxValue);
                     RunLearningSession(session);
                     _service.SaveLearningQueue();

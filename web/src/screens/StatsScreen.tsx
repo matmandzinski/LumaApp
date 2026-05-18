@@ -11,7 +11,7 @@ export function StatsScreen() {
       <div className="stat-grid">
         <Card as="article">
           <p className="card-title">Today</p>
-          <p className="stat-value">5 cards</p>
+          <p className="stat-value">10 cards</p>
           <MetaText>Quick lesson done</MetaText>
         </Card>
         <Card as="article">
