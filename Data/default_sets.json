@@ -1,6 +1,6 @@
 [
     {
-        "Name": "English for IT",
+        "Name": "English for IT - B2",
         "Flashcards": [
             {
                 "Front": "Bug",
@@ -205,16 +205,58 @@
         ]
     },
     {
-        "Name": "English for Beginners",
-        "Flashcards": [
-            {
-                "Front": "Apple",
-                "Back": "Jabłko"
-            },
-            {
-                "Front": "Job",
-                "Back": "Praca"
-            }
-        ]
-    }
+    "Name": "English Advanced C1",
+    "Flashcards": [
+      { "Front": "Alleviate", "Back": "Łagodzić" },
+      { "Front": "Ambiguous", "Back": "Dwuznaczny" },
+      { "Front": "Arbitrary", "Back": "Arbitralny" },
+      { "Front": "Assertive", "Back": "Asertywny" },
+      { "Front": "Benevolent", "Back": "Życzliwy" },
+      { "Front": "Coherent", "Back": "Spójny" },
+      { "Front": "Compelling", "Back": "Przekonujący" },
+      { "Front": "Conceal", "Back": "Ukrywać" },
+      { "Front": "Consequence", "Back": "Konsekwencja" },
+      { "Front": "Contradict", "Back": "Zaprzeczać" },
+      { "Front": "Convey", "Back": "Przekazywać" },
+      { "Front": "Credible", "Back": "Wiarygodny" },
+      { "Front": "Deteriorate", "Back": "Pogarszać się" },
+      { "Front": "Discrepancy", "Back": "Rozbieżność" },
+      { "Front": "Elaborate", "Back": "Rozwinąć / szczegółowo wyjaśnić" },
+      { "Front": "Emphasize", "Back": "Podkreślać" },
+      { "Front": "Endeavor", "Back": "Przedsięwzięcie / starać się" },
+      { "Front": "Enhance", "Back": "Ulepszać" },
+      { "Front": "Exacerbate", "Back": "Zaostrzać / pogarszać" },
+      { "Front": "Feasible", "Back": "Wykonalny" },
+      { "Front": "Fluctuate", "Back": "Wahać się" },
+      { "Front": "Fundamental", "Back": "Podstawowy / fundamentalny" },
+      { "Front": "Impartial", "Back": "Bezstronny" },
+      { "Front": "Imply", "Back": "Sugerować / dawać do zrozumienia" },
+      { "Front": "Inadvertently", "Back": "Nieumyślnie" },
+      { "Front": "Inevitable", "Back": "Nieunikniony" },
+      { "Front": "Infer", "Back": "Wnioskować" },
+      { "Front": "Inherent", "Back": "Nieodłączny / wrodzony" },
+      { "Front": "Insightful", "Back": "Wnikliwy" },
+      { "Front": "Intricate", "Back": "Skomplikowany / zawiły" },
+      { "Front": "Justify", "Back": "Uzasadniać" },
+      { "Front": "Mitigate", "Back": "Łagodzić / ograniczać skutki" },
+      { "Front": "Notwithstanding", "Back": "Pomimo" },
+      { "Front": "Obsolete", "Back": "Przestarzały" },
+      { "Front": "Overlook", "Back": "Przeoczyć" },
+      { "Front": "Plausible", "Back": "Prawdopodobny / wiarygodny" },
+      { "Front": "Prevalent", "Back": "Powszechny" },
+      { "Front": "Profound", "Back": "Głęboki / dogłębny" },
+      { "Front": "Reluctant", "Back": "Niechętny" },
+      { "Front": "Resilient", "Back": "Odporny / wytrzymały" },
+      { "Front": "Scrutinize", "Back": "Dokładnie analizować" },
+      { "Front": "Subsequent", "Back": "Późniejszy / następny" },
+      { "Front": "Subtle", "Back": "Subtelny" },
+      { "Front": "Sufficient", "Back": "Wystarczający" },
+      { "Front": "Tangible", "Back": "Namacalny / konkretny" },
+      { "Front": "Tedious", "Back": "Żmudny / nużący" },
+      { "Front": "Undermine", "Back": "Podważać" },
+      { "Front": "Viable", "Back": "Realny / możliwy do zrealizowania" },
+      { "Front": "Widespread", "Back": "Rozpowszechniony" },
+      { "Front": "Yield", "Back": "Przynosić / ustępować" }
+    ]
+    } 
 ]

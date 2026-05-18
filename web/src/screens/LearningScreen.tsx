@@ -1,9 +1,9 @@
 import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 import { AppButton } from "../components/ui";
+import appLogoUrl from "../../../Resources/AppLogo/LUMA-logo.png";
 
 type LearningCard = {
   id: string;
-  label: string;
   term: string;
   prompt: string;
   answer: string;
@@ -181,7 +181,9 @@ export function LearningScreen({
         >
           &times;
         </button>
-        <div className="lesson-brand">LingoFlow</div>
+        <div className="lesson-brand">
+          <img className="lesson-brand-logo" src={appLogoUrl} alt="LumaApp" />
+        </div>
         <button
           type="button"
           className="lesson-icon-button"
@@ -282,15 +284,10 @@ const FlashcardFaces = memo(function FlashcardFaces({ card, isRevealed }: Flashc
   return (
     <>
       <span className="flashcard-face flashcard-front" aria-hidden={isRevealed}>
-        <span className="card-number">{card.label}</span>
         <span className="learning-term" style={termStyle}>{card.term}</span>
-        <span className="learning-answer">
-          <span className="hint-dot" />
-          {card.prompt}
-        </span>
+        <span className="learning-answer">{card.prompt}</span>
       </span>
       <span className="flashcard-face flashcard-back" aria-hidden={!isRevealed}>
-        <span className="card-number">{card.label}</span>
         <span className="learning-definition">{card.answer}</span>
         <span className="learning-answer">Tap to view term</span>
       </span>

@@ -1,6 +1,6 @@
 {
-  "name": "SimpleFlashCards",
-  "short_name": "FlashCards",
+  "name": "LumaApp",
+  "short_name": "LumaApp",
   "description": "Mobile-first flashcards (Supabase-ready shell)",
   "start_url": "/",
   "display": "standalone",

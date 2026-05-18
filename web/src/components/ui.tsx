@@ -48,23 +48,29 @@ export function MetaText({ children }: PropsWithChildren) {
 }
 
 type TopBarProps = {
+  logoSrc?: string;
   onBack?: () => void;
   onProfileOpen: () => void;
   title: string;
 };
 
-export function TopBar({ onBack, onProfileOpen, title }: TopBarProps) {
+export function TopBar({ logoSrc, onBack, onProfileOpen, title }: TopBarProps) {
   return (
     <header className="top-bar" aria-label={title}>
-      <button
-        type="button"
-        className="icon-chip"
-        aria-label={onBack ? "Back" : "Menu"}
-        onClick={onBack}
-      >
-        {onBack ? <BackIcon /> : <MenuIcon />}
-      </button>
-      <p className="top-bar-title">{title}</p>
+      {onBack ? (
+        <button type="button" className="icon-chip" aria-label="Back" onClick={onBack}>
+          <BackIcon />
+        </button>
+      ) : (
+        <span className="top-bar-spacer" aria-hidden="true" />
+      )}
+      <div className="top-bar-brand">
+        {logoSrc ? (
+          <img className="top-bar-logo" src={logoSrc} alt={title} />
+        ) : (
+          <p className="top-bar-title">{title}</p>
+        )}
+      </div>
       <button type="button" className="icon-chip" aria-label="Profile" onClick={onProfileOpen}>
         <ProfileIcon />
       </button>
@@ -77,16 +83,6 @@ function BackIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden>
       <path d="M19 12H5" />
       <path d="m11 6-6 6 6 6" />
-    </svg>
-  );
-}
-
-function MenuIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden>
-      <path d="M5 7h14" />
-      <path d="M5 12h14" />
-      <path d="M5 17h14" />
     </svg>
   );
 }

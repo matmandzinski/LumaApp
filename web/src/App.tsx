@@ -55,7 +55,6 @@ type FlashcardDraft = Pick<Flashcard, "front" | "back"> & {
 function toLearningCard(card: Flashcard, index: number, setId: string) {
   return {
     id: `${setId}-${index}-${card.front}-${card.back}`,
-    label: `Card ${index + 1}`,
     term: card.front,
     prompt: "Tap to reveal",
     answer: card.back,

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { AppViewId, TabId } from "../theme/tokens";
 import { BottomTabBar } from "./BottomTabBar";
 import { TopBar } from "./ui";
+import appLogoUrl from "../../../Resources/AppLogo/LUMA-logo.png";
 
 type AppChromeProps = {
   activeTab: AppViewId;
@@ -24,7 +25,14 @@ export function AppChrome({
 }: AppChromeProps) {
   return (
     <div className={`app-shell ${showBottomNav ? "has-bottom-nav" : ""}`.trim()}>
-      {showTopBar ? <TopBar title="LingoFlow" onBack={onBack} onProfileOpen={onProfileOpen} /> : null}
+      {showTopBar ? (
+        <TopBar
+          logoSrc={appLogoUrl}
+          title="LumaApp"
+          onBack={onBack}
+          onProfileOpen={onProfileOpen}
+        />
+      ) : null}
 
       <main className="screen-frame">{children}</main>
 
