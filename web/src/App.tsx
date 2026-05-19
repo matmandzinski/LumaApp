@@ -202,6 +202,16 @@ function getLearningProgress(card: Flashcard): LearningProgress {
   };
 }
 
+function resetFlashcardLearningState(card: Flashcard): Flashcard {
+  return {
+    ...card,
+    learningStage: 0,
+    reviewAgainStreak: 0,
+    isLearned: false,
+    lastReviewedAt: null,
+  };
+}
+
 function normalizeLearningStage(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0;
 }
@@ -420,6 +430,8 @@ export function App() {
         : "All caught up";
   const practiceCardsLabel =
     activeSetCounts.readyCards > 0 ? `${activeSetCounts.readyCards} cards ready` : "All caught up";
+  const activeSetCanReset =
+    activeSetCounts.totalCards > 0 && activeSetCounts.learnedCards === activeSetCounts.totalCards;
 
   const showBottomNav = useMemo(
     () =>
@@ -591,6 +603,35 @@ export function App() {
     if (viewedSetId === setToDelete.id) {
       setViewedSetId(selectedSetId);
     }
+  }
+
+  function resetSelectedSetLearningState() {
+    setQuickLessonCompleted(false);
+    setQuickLessonReviewedCount(0);
+    setQuickLessonDecisionLimit(0);
+    setQuickLessonQueue([]);
+    setLearningDecisionCount(0);
+    setLearningSessionCardTotal(0);
+    setLearningQueue([]);
+
+    if (selectedSet.source === "User") {
+      updateUserSet(selectedSet.id, (currentSet) => ({
+        ...currentSet,
+        flashcards: currentSet.flashcards.map(resetFlashcardLearningState),
+      }));
+      return;
+    }
+
+    setLearningProgress((currentProgress) => {
+      const nextProgress = { ...currentProgress };
+
+      selectedSet.flashcards.forEach((card, index) => {
+        delete nextProgress[getCardProgressKey(selectedSet.id, card, index)];
+      });
+
+      saveLearningProgress(nextProgress);
+      return nextProgress;
+    });
   }
 
   function persistCardLearningState(set: FlashcardSet, item: LearningSessionItem) {
@@ -950,6 +991,7 @@ export function App() {
         learningCardCount={activeSetCounts.learningCards}
         practiceCardsLabel={practiceCardsLabel}
         quickLessonCardCount={quickLessonReadyCount}
+        quickLessonCanReset={activeSetCanReset}
         quickLessonLabel={quickLessonCardLabel}
         quickLessonState={
           activeSetCounts.readyCards === 0 ? "caughtUp" : quickLessonCompleted ? "completed" : "ready"
@@ -958,6 +1000,7 @@ export function App() {
         onStartQuickLesson={startQuickLesson}
         onContinueLearning={startContinueLearning}
         onOpenActiveSet={() => setHomeRoute("setDetails")}
+        onResetActiveSet={resetSelectedSetLearningState}
       />
     );
   }

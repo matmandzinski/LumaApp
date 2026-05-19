@@ -9,12 +9,14 @@ type HomeScreenProps = {
   learningCardCount: number;
   practiceCardsLabel: string;
   quickLessonCardCount: number;
+  quickLessonCanReset: boolean;
   quickLessonLabel: string;
   quickLessonState: QuickLessonState;
   onBrowseSets: () => void;
   onStartQuickLesson: () => void;
   onContinueLearning: () => void;
   onOpenActiveSet: () => void;
+  onResetActiveSet: () => void;
 };
 
 export function HomeScreen({
@@ -26,17 +28,28 @@ export function HomeScreen({
   learningCardCount,
   practiceCardsLabel,
   quickLessonCardCount,
+  quickLessonCanReset,
   quickLessonLabel,
   quickLessonState,
   onBrowseSets,
   onStartQuickLesson,
   onContinueLearning,
   onOpenActiveSet,
+  onResetActiveSet,
 }: HomeScreenProps) {
   const quickLessonIsComplete = quickLessonState === "completed";
   const quickLessonIsCaughtUp = quickLessonState === "caughtUp";
-  const quickLessonIsUnavailable = quickLessonIsComplete || quickLessonIsCaughtUp;
+  const quickLessonCanStart = !quickLessonIsComplete && !quickLessonIsCaughtUp;
+  const quickLessonActionDisabled =
+    quickLessonIsComplete || (quickLessonIsCaughtUp && !quickLessonCanReset);
   const streakLabel = formatHomeStreakLabel(currentStreak);
+  const quickLessonActionLabel = quickLessonIsCaughtUp
+    ? quickLessonCanReset
+      ? "Reset set progress"
+      : "All caught up"
+    : quickLessonIsComplete
+      ? "Done for now"
+      : "Start now";
 
   return (
     <div className="screen-content home-screen">
@@ -90,7 +103,9 @@ export function HomeScreen({
           )}
           <p className="quick-description">
             {quickLessonIsCaughtUp
-              ? "Every card in this deck is learned for now. Practice opens again when new cards are added."
+              ? quickLessonCanReset
+                ? "All cards in this deck are learned. Change the set or reset this set to learn it again."
+                : "This deck has no cards ready right now. Change the set or add cards to practice."
               : quickLessonIsComplete
                 ? "Your quick lesson is complete. You can keep learning below, or take a break and come back for the next one later."
                 : `Review up to ${quickLessonCardCount} cards from your active deck. Calm, focused, and done fast.`}
@@ -99,10 +114,10 @@ export function HomeScreen({
           <button
             type="button"
             className="start-now-btn"
-            onClick={onStartQuickLesson}
-            disabled={quickLessonIsUnavailable}
+            onClick={quickLessonCanStart ? onStartQuickLesson : onResetActiveSet}
+            disabled={quickLessonActionDisabled}
           >
-            {quickLessonIsCaughtUp ? "All caught up" : quickLessonIsComplete ? "Done for now" : "Start now"}
+            {quickLessonActionLabel}
           </button>
         </div>
       </section>
@@ -115,7 +130,7 @@ export function HomeScreen({
       <article className="active-deck-card">
         <button type="button" className="active-deck-main" onClick={onOpenActiveSet}>
           <span className="active-deck-copy">
-            <span className="premium-label">Active deck</span>
+            <span className="premium-label">Active set</span>
             <span className="active-deck-row">
               <span className="active-deck-name">{activeSetName}</span>
               <span className="active-deck-count">{activeSetCardCount} cards</span>
