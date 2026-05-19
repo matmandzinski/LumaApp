@@ -21,12 +21,19 @@ type LearningScreenProps = {
   subtitle: string;
   progressLabel: string;
   progressPercent: number;
+  statusSummary?: LearningStatusItem[];
   card: LearningCard;
   nextCard?: LearningCard | null;
   passLabel: string;
   onPass: () => void;
   onExit: () => void;
   onRepeat?: () => void;
+};
+
+type LearningStatusItem = {
+  label: string;
+  value: number;
+  tone: "difficult" | "learning" | "learned";
 };
 
 type ExitAction = "pass" | "repeat";
@@ -80,6 +87,7 @@ export function LearningScreen({
   subtitle,
   progressLabel,
   progressPercent,
+  statusSummary,
   card,
   nextCard,
   passLabel,
@@ -374,17 +382,33 @@ export function LearningScreen({
 
       <section className="lesson-meta">
         <div className="set-name">{title}</div>
-        <div
-          className="learning-progress-track"
-          role="progressbar"
-          aria-label={`Progress ${lessonProgressLabel}`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(visualProgressPercent)}
-        >
-          <span className="learning-progress-fill" style={{ width: `${visualProgressPercent}%` }} />
-        </div>
-        <div className="progress-label">{lessonProgressLabel}</div>
+        {statusSummary ? (
+          <div className="learning-status-summary" aria-label="Learning status">
+            {statusSummary.map((item) => (
+              <span key={item.tone} className={`learning-status-chip ${item.tone}`}>
+                <span className="learning-status-value">{item.value}</span>
+                <span className="learning-status-label">{item.label}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div
+              className="learning-progress-track"
+              role="progressbar"
+              aria-label={`Progress ${lessonProgressLabel}`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(visualProgressPercent)}
+            >
+              <span
+                className="learning-progress-fill"
+                style={{ width: `${visualProgressPercent}%` }}
+              />
+            </div>
+            <div className="progress-label">{lessonProgressLabel}</div>
+          </>
+        )}
       </section>
 
       <section className="lesson-main">

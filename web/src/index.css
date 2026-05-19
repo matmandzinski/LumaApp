@@ -2692,6 +2692,44 @@ button {
   font-weight: 600;
 }
 
+.learning-status-summary {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 292px;
+  width: 100%;
+}
+
+.learning-status-chip {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.learning-status-chip + .learning-status-chip {
+  border-left: 1px solid rgba(20, 22, 19, 0.1);
+}
+
+.learning-status-value {
+  color: var(--text);
+  font-size: 1.12rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.learning-status-label {
+  color: #65736a;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .lesson-main {
   display: flex;
   flex: 1;

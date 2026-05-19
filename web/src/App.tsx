@@ -239,6 +239,20 @@ function getLearningCounts(set: FlashcardSet) {
   };
 }
 
+function getLearningStatusSummary(set: FlashcardSet) {
+  const learnedCards = set.flashcards.filter((card) => card.isLearned).length;
+  const difficultCards = set.flashcards.filter(
+    (card) => !card.isLearned && card.learningStage === -1,
+  ).length;
+  const learningCards = Math.max(set.flashcards.length - learnedCards - difficultCards, 0);
+
+  return [
+    { label: "Difficult", value: difficultCards, tone: "difficult" as const },
+    { label: "Learning", value: learningCards, tone: "learning" as const },
+    { label: "Learned", value: learnedCards, tone: "learned" as const },
+  ];
+}
+
 function loadLearningProgress(): LearningProgressStore {
   try {
     const rawProgress = window.localStorage.getItem(LEARNING_PROGRESS_STORAGE_KEY);
@@ -839,6 +853,7 @@ export function App() {
       const activeQueueItem = learningQueue[0];
       const nextQueueItem = learningQueue[1];
       const cappedLearningProgress = Math.min(learningDecisionCount, learningSessionCardTotal);
+      const learningStatusSummary = getLearningStatusSummary(selectedSet);
 
       if (!activeQueueItem) {
         return (
@@ -866,6 +881,7 @@ export function App() {
           progressPercent={
             (cappedLearningProgress / Math.max(learningSessionCardTotal, 1)) * 100
           }
+          statusSummary={learningStatusSummary}
           card={toLearningCard(activeQueueItem.card, activeQueueItem.index, selectedSet.id)}
           nextCard={
             nextQueueItem ? toLearningCard(nextQueueItem.card, nextQueueItem.index, selectedSet.id) : null
