@@ -35,7 +35,6 @@ const CARD_EXIT_DURATION_MS = 440;
 const REDUCED_MOTION_CARD_EXIT_DURATION_MS = 120;
 const CARD_RETURN_DURATION_MS = 260;
 const REDUCED_MOTION_CARD_RETURN_DURATION_MS = 80;
-const MAX_PROGRESS_PILLS = 8;
 const SWIPE_TRIGGER_THRESHOLD_PX = 104;
 const TAP_MOVEMENT_THRESHOLD_PX = 8;
 const MAX_SWIPE_ROTATION_DEG = 4.5;
@@ -108,11 +107,7 @@ export function LearningScreen({
   const boundedProgress = Math.min(Math.max(progressPercent, 0), 100);
   const { completed, total } = getProgressParts(progressLabel);
   const activeCardPosition = total > 0 ? Math.min(completed + 1, total) : 1;
-  const progressPillCount = total > 0 ? Math.min(total, MAX_PROGRESS_PILLS) : MAX_PROGRESS_PILLS;
-  const activePillCount =
-    total > MAX_PROGRESS_PILLS
-      ? Math.max(1, Math.ceil((activeCardPosition / total) * progressPillCount))
-      : activeCardPosition;
+  const visualProgressPercent = total > 0 ? (activeCardPosition / total) * 100 : boundedProgress;
   const lessonProgressLabel = total > 0 ? `Card ${activeCardPosition} of ${total}` : progressLabel;
   const isProcessingAction = processingAction !== null;
   const isInteractionPaused = isProcessingAction || dragState.isReturning;
@@ -380,15 +375,14 @@ export function LearningScreen({
       <section className="lesson-meta">
         <div className="set-name">{title}</div>
         <div
-          className="progress-pills"
-          aria-label={`Progress ${progressLabel}, ${Math.round(boundedProgress)} percent complete`}
+          className="learning-progress-track"
+          role="progressbar"
+          aria-label={`Progress ${lessonProgressLabel}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(visualProgressPercent)}
         >
-          {Array.from({ length: progressPillCount }, (_, index) => (
-            <span
-              className={`pill ${index < activePillCount ? "done" : ""}`}
-              key={`progress-pill-${index}`}
-            />
-          ))}
+          <span className="learning-progress-fill" style={{ width: `${visualProgressPercent}%` }} />
         </div>
         <div className="progress-label">{lessonProgressLabel}</div>
       </section>

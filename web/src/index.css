@@ -2717,16 +2717,23 @@ button {
 }
 
 .learning-progress-track {
-  height: 4px;
-  background: #d1d8d3;
+  background: rgba(20, 22, 19, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(20, 22, 19, 0.06);
+  height: 8px;
+  margin: 0 auto 8px;
+  max-width: 246px;
+  overflow: hidden;
+  width: min(64vw, 246px);
 }
 
 .learning-progress-fill {
-  width: 60%;
-  height: 100%;
   background: var(--accent);
-  border-radius: 999px;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width 260ms ease;
 }
 
 .learning-actions {
