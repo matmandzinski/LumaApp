@@ -338,17 +338,30 @@ button {
   cursor: pointer;
   display: block;
   padding: 0;
-  touch-action: manipulation;
+  touch-action: pan-y;
   transition:
     transform 250ms ease,
     filter 250ms ease;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
   width: 100%;
 }
 
 .flashcard.current-card {
   position: relative;
+  transform: translate3d(var(--swipe-x, 0px), 0, 0) rotate(var(--swipe-rotate, 0deg));
   z-index: 2;
+}
+
+.flashcard.current-card.is-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.flashcard.current-card.is-returning {
+  transition:
+    transform 260ms cubic-bezier(0.2, 0.82, 0.2, 1),
+    filter 250ms ease;
 }
 
 .flashcard.next-card {
@@ -373,7 +386,12 @@ button {
     #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 34px;
-  box-shadow: 0 18px 45px rgba(25, 42, 32, 0.09);
+  box-shadow:
+    0 18px 45px rgba(25, 42, 32, 0.09),
+    0 0 38px rgba(47, 143, 89, var(--swipe-pass-glow-alpha, 0)),
+    0 0 38px rgba(192, 86, 70, var(--swipe-repeat-glow-alpha, 0)),
+    inset 0 0 0 1px rgba(47, 143, 89, var(--swipe-pass-border-alpha, 0)),
+    inset 0 0 0 1px rgba(192, 86, 70, var(--swipe-repeat-border-alpha, 0));
   display: block;
   min-height: 360px;
   position: relative;
@@ -395,12 +413,85 @@ button {
   box-shadow: 0 16px 36px rgba(25, 42, 32, 0.12);
 }
 
-.flashcard.current-card:not(:disabled):hover {
-  transform: translateY(-2px);
+.flashcard.current-card:not(:disabled):not(.is-dragging):not(.is-returning):not(.is-exiting):hover {
+  transform: translate3d(var(--swipe-x, 0px), -2px, 0) rotate(var(--swipe-rotate, 0deg));
 }
 
 .flashcard.current-card:not(:disabled):hover .flashcard-inner {
-  box-shadow: 0 22px 55px rgba(25, 42, 32, 0.12);
+  box-shadow:
+    0 22px 55px rgba(25, 42, 32, 0.12),
+    0 0 38px rgba(47, 143, 89, var(--swipe-pass-glow-alpha, 0)),
+    0 0 38px rgba(192, 86, 70, var(--swipe-repeat-glow-alpha, 0)),
+    inset 0 0 0 1px rgba(47, 143, 89, var(--swipe-pass-border-alpha, 0)),
+    inset 0 0 0 1px rgba(192, 86, 70, var(--swipe-repeat-border-alpha, 0));
+}
+
+.flashcard.current-card.is-dragging .flashcard-inner {
+  box-shadow:
+    0 24px 58px rgba(25, 42, 32, 0.13),
+    0 0 42px rgba(47, 143, 89, var(--swipe-pass-glow-alpha, 0)),
+    0 0 42px rgba(192, 86, 70, var(--swipe-repeat-glow-alpha, 0)),
+    inset 0 0 0 1px rgba(47, 143, 89, var(--swipe-pass-border-alpha, 0)),
+    inset 0 0 0 1px rgba(192, 86, 70, var(--swipe-repeat-border-alpha, 0));
+  scale: 0.992;
+}
+
+.swipe-feedback {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  height: 34px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  padding: 0 13px;
+  pointer-events: none;
+  position: absolute;
+  text-transform: uppercase;
+  top: 22px;
+  left: 50%;
+  transform: translate(-50%, 4px) scale(0.98);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+  white-space: nowrap;
+  z-index: 3;
+}
+
+.swipe-feedback-pass {
+  background: rgba(229, 246, 236, 0.9);
+  border-color: rgba(36, 122, 77, 0.12);
+  color: #246d46;
+  opacity: var(--swipe-pass-opacity, 0);
+}
+
+.swipe-feedback-repeat {
+  background: rgba(255, 244, 239, 0.92);
+  border-color: rgba(156, 87, 56, 0.1);
+  color: #94563e;
+  opacity: var(--swipe-repeat-opacity, 0);
+}
+
+.flashcard.current-card.is-dragging .swipe-feedback,
+.flashcard.current-card.is-exiting .swipe-feedback {
+  transform: translate(-50%, 0) scale(1);
+}
+
+.flashcard.current-card.swipe-ready-pass .swipe-feedback-pass {
+  background: rgba(224, 246, 233, 0.96);
+  border-color: rgba(36, 122, 77, 0.2);
+  box-shadow: 0 8px 22px rgba(36, 122, 77, 0.08);
+}
+
+.flashcard.current-card.swipe-ready-repeat .swipe-feedback-repeat {
+  background: rgba(255, 241, 234, 0.98);
+  border-color: rgba(156, 87, 56, 0.18);
+  box-shadow: 0 8px 22px rgba(156, 87, 56, 0.07);
 }
 
 .flashcard-face {
@@ -427,6 +518,14 @@ button {
     radial-gradient(circle at 50% 0%, rgba(47, 133, 90, 0.1), transparent 38%),
     #ffffff;
   transform: rotateY(180deg);
+}
+
+.flashcard.current-card:not(.is-exiting) .flashcard-face {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(47, 133, 90, 0.08), transparent 38%),
+    linear-gradient(180deg, rgba(47, 143, 89, var(--swipe-pass-face-alpha, 0)), transparent 72%),
+    linear-gradient(180deg, rgba(192, 86, 70, var(--swipe-repeat-face-alpha, 0)), transparent 72%),
+    #ffffff;
 }
 
 .flashcard.next-card .flashcard-inner {
@@ -485,44 +584,52 @@ button {
 @keyframes flashcard-exit-right {
   0% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) rotate(0deg);
+    transform: translate3d(var(--swipe-exit-start-x, 0px), 0, 0)
+      rotate(var(--swipe-exit-start-rotate, 0deg));
   }
 
   12% {
     opacity: 1;
-    transform: translate3d(10%, 0, 0) rotate(0.35deg);
+    transform: translate3d(calc(var(--swipe-exit-start-x, 0px) + 10%), 0, 0)
+      rotate(calc(var(--swipe-exit-start-rotate, 0deg) + 0.35deg));
   }
 
   78% {
     opacity: 1;
-    transform: translate3d(92%, -2px, 0) rotate(1.7deg);
+    transform: translate3d(calc(var(--swipe-exit-start-x, 0px) + 92%), -2px, 0)
+      rotate(calc(var(--swipe-exit-start-rotate, 0deg) + 1.7deg));
   }
 
   100% {
     opacity: 0;
-    transform: translate3d(108%, -2px, 0) rotate(2deg);
+    transform: translate3d(calc(var(--swipe-exit-start-x, 0px) + 108%), -2px, 0)
+      rotate(calc(var(--swipe-exit-start-rotate, 0deg) + 2deg));
   }
 }
 
 @keyframes flashcard-exit-left {
   0% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) rotate(0deg);
+    transform: translate3d(var(--swipe-exit-start-x, 0px), 0, 0)
+      rotate(var(--swipe-exit-start-rotate, 0deg));
   }
 
   12% {
     opacity: 1;
-    transform: translate3d(-10%, 0, 0) rotate(-0.35deg);
+    transform: translate3d(calc(var(--swipe-exit-start-x, 0px) - 10%), 0, 0)
+      rotate(calc(var(--swipe-exit-start-rotate, 0deg) - 0.35deg));
   }
 
   78% {
     opacity: 1;
-    transform: translate3d(-92%, -2px, 0) rotate(-1.7deg);
+    transform: translate3d(calc(var(--swipe-exit-start-x, 0px) - 92%), -2px, 0)
+      rotate(calc(var(--swipe-exit-start-rotate, 0deg) - 1.7deg));
   }
 
   100% {
     opacity: 0;
-    transform: translate3d(-108%, -2px, 0) rotate(-2deg);
+    transform: translate3d(calc(var(--swipe-exit-start-x, 0px) - 108%), -2px, 0)
+      rotate(calc(var(--swipe-exit-start-rotate, 0deg) - 2deg));
   }
 }
 
