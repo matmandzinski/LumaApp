@@ -9,6 +9,7 @@ type SetsScreenProps = {
   onCreateSet: (name: string) => string | null;
   onDeleteSet: (set: FlashcardSet) => void;
   onOpenSetDetails: (set: FlashcardSet) => void;
+  onResetSetProgress: (set: FlashcardSet) => void;
   onSetActive: (set: FlashcardSet) => void;
 };
 
@@ -18,6 +19,7 @@ export function SetsScreen({
   onCreateSet,
   onDeleteSet,
   onOpenSetDetails,
+  onResetSetProgress,
   onSetActive,
 }: SetsScreenProps) {
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
@@ -83,7 +85,6 @@ export function SetsScreen({
               set={set}
               isActive={set.id === activeSetId}
               isOptionsOpen={set.id === openOptionsSetId}
-              progressPercent={getProgressPercent(index, set.id === activeSetId)}
               practiceLabel={getPracticeLabel(index)}
               showMenuHint
               onDeleteRequest={() => {
@@ -93,6 +94,10 @@ export function SetsScreen({
               onClick={() => onOpenSetDetails(set)}
               onSetActive={() => {
                 onSetActive(set);
+                setOpenOptionsSetId(null);
+              }}
+              onResetProgress={() => {
+                onResetSetProgress(set);
                 setOpenOptionsSetId(null);
               }}
               onToggleOptions={() =>
@@ -116,12 +121,15 @@ export function SetsScreen({
             set={set}
             isActive={set.id === activeSetId}
             isOptionsOpen={set.id === openOptionsSetId}
-            progressPercent={getProgressPercent(index, set.id === activeSetId)}
             practiceLabel={getPracticeLabel(index)}
             showMenuHint
             onClick={() => onOpenSetDetails(set)}
             onSetActive={() => {
               onSetActive(set);
+              setOpenOptionsSetId(null);
+            }}
+            onResetProgress={() => {
+              onResetSetProgress(set);
               setOpenOptionsSetId(null);
             }}
             onToggleOptions={() =>
@@ -491,11 +499,11 @@ type CollectionCardProps = {
   set: FlashcardSet;
   isActive: boolean;
   isOptionsOpen?: boolean;
-  progressPercent: number;
   practiceLabel: string;
   showMenuHint?: boolean;
   onClick: () => void;
   onDeleteRequest?: () => void;
+  onResetProgress?: () => void;
   onSetActive?: () => void;
   onToggleOptions?: () => void;
 };
@@ -504,14 +512,19 @@ function CollectionCard({
   set,
   isActive,
   isOptionsOpen = false,
-  progressPercent,
   practiceLabel,
   showMenuHint = false,
   onClick,
   onDeleteRequest,
+  onResetProgress,
   onSetActive,
   onToggleOptions,
 }: CollectionCardProps) {
+  const learnedCards = getLearnedCardCount(set);
+  const totalCards = set.flashcards.length;
+  const progressPercent = totalCards > 0 ? (learnedCards / totalCards) * 100 : 0;
+  const progressLabel = `${learnedCards} / ${totalCards} learned`;
+
   return (
     <div
       className={`sets-card-shell ${isOptionsOpen ? "has-options-open" : ""}`.trim()}
@@ -551,8 +564,17 @@ function CollectionCard({
         </div>
 
         <div className="sets-card-bottom">
-          <span className="sets-progress-track" aria-label={`${progressPercent}% complete`}>
-            <span style={{ width: `${progressPercent}%` }} />
+          <span className="sets-progress-summary">
+            <span
+              className="sets-progress-track"
+              role="progressbar"
+              aria-label={progressLabel}
+              aria-valuemin={0}
+              aria-valuemax={totalCards}
+              aria-valuenow={learnedCards}
+            >
+              <span style={{ width: `${progressPercent}%` }} />
+            </span>
           </span>
           <button
             type="button"
@@ -575,6 +597,14 @@ function CollectionCard({
             onClick={onSetActive}
           >
             {isActive ? "Active set" : "Set as active"}
+          </button>
+          <button
+            type="button"
+            className="set-options-row"
+            role="menuitem"
+            onClick={onResetProgress}
+          >
+            Reset set progress
           </button>
           {onDeleteRequest ? (
             <button
@@ -814,11 +844,8 @@ function getPracticeLabel(index: number) {
   return labels[index % labels.length];
 }
 
-function getProgressPercent(index: number, isActive: boolean) {
-  if (isActive) return 58;
-
-  const progressValues = [58, 64, 20];
-  return progressValues[index % progressValues.length];
+function getLearnedCardCount(set: FlashcardSet) {
+  return set.flashcards.filter((card) => card.isLearned).length;
 }
 
 function getLastPracticedLabel(setId: string) {

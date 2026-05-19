@@ -1895,14 +1895,21 @@ button {
   margin-top: auto;
 }
 
+.sets-progress-summary {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+}
+
 .sets-progress-track {
   background: rgba(111, 118, 111, 0.22);
   border-radius: 999px;
   display: block;
-  flex: 1;
   height: 4px;
   max-width: 118px;
   overflow: hidden;
+  width: 100%;
 }
 
 .sets-progress-track span {

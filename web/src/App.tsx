@@ -605,17 +605,19 @@ export function App() {
     }
   }
 
-  function resetSelectedSetLearningState() {
-    setQuickLessonCompleted(false);
-    setQuickLessonReviewedCount(0);
-    setQuickLessonDecisionLimit(0);
-    setQuickLessonQueue([]);
-    setLearningDecisionCount(0);
-    setLearningSessionCardTotal(0);
-    setLearningQueue([]);
+  function resetSetLearningState(setToReset: FlashcardSet) {
+    if (setToReset.id === selectedSetId) {
+      setQuickLessonCompleted(false);
+      setQuickLessonReviewedCount(0);
+      setQuickLessonDecisionLimit(0);
+      setQuickLessonQueue([]);
+      setLearningDecisionCount(0);
+      setLearningSessionCardTotal(0);
+      setLearningQueue([]);
+    }
 
-    if (selectedSet.source === "User") {
-      updateUserSet(selectedSet.id, (currentSet) => ({
+    if (setToReset.source === "User") {
+      updateUserSet(setToReset.id, (currentSet) => ({
         ...currentSet,
         flashcards: currentSet.flashcards.map(resetFlashcardLearningState),
       }));
@@ -625,13 +627,17 @@ export function App() {
     setLearningProgress((currentProgress) => {
       const nextProgress = { ...currentProgress };
 
-      selectedSet.flashcards.forEach((card, index) => {
-        delete nextProgress[getCardProgressKey(selectedSet.id, card, index)];
+      setToReset.flashcards.forEach((card, index) => {
+        delete nextProgress[getCardProgressKey(setToReset.id, card, index)];
       });
 
       saveLearningProgress(nextProgress);
       return nextProgress;
     });
+  }
+
+  function resetSelectedSetLearningState() {
+    resetSetLearningState(selectedSet);
   }
 
   function persistCardLearningState(set: FlashcardSet, item: LearningSessionItem) {
@@ -1029,6 +1035,7 @@ export function App() {
         onCreateSet={createUserSet}
         onDeleteSet={deleteUserSet}
         onOpenSetDetails={openSetDetails}
+        onResetSetProgress={resetSetLearningState}
         onSetActive={selectSet}
       />
     );
