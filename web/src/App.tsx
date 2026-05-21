@@ -237,15 +237,18 @@ function normalizeFlashcard(card: FlashcardDraft): Flashcard {
 function getLearningCounts(set: FlashcardSet) {
   const totalCards = set.flashcards.length;
   const learnedCards = set.flashcards.filter((card) => card.isLearned).length;
-  const learningCards = set.flashcards.filter((card) => !card.isLearned).length;
-  const difficultCards = set.flashcards.filter((card) => card.learningStage === -1).length;
+  const difficultCards = set.flashcards.filter(
+    (card) => !card.isLearned && card.learningStage === -1,
+  ).length;
+  const learningCards = Math.max(totalCards - learnedCards - difficultCards, 0);
+  const readyCards = Math.max(totalCards - learnedCards, 0);
 
   return {
     totalCards,
     learnedCards,
     learningCards,
     difficultCards,
-    readyCards: learningCards,
+    readyCards,
   };
 }
 
