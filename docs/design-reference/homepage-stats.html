@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Luma - Today’s Flow Card</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px;
+      font-family: Nunito Sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f1e9;
+      color: #101c16;
+    }
+
+    .phone-preview {
+      width: 100%;
+      max-width: 430px;
+      margin: 0 auto;
+    }
+
+    .flow-card {
+      width: 100%;
+      border-radius: 28px;
+      padding: 22px;
+      background:
+        radial-gradient(
+          circle at 96% 0%,
+          rgba(31, 178, 105, 0.12) 0,
+          rgba(31, 178, 105, 0) 34%
+        ),
+        linear-gradient(145deg, #ffffff 0%, #f7fbf6 100%);
+      border: 1px solid rgba(15, 122, 67, 0.08);
+      box-shadow: 0 16px 38px rgba(35, 55, 45, 0.08);
+      overflow: hidden;
+    }
+
+    .flow-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .flow-label {
+      margin: 0 0 6px;
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #0f7a43;
+    }
+
+    .flow-top h3 {
+      margin: 0;
+      max-width: 220px;
+      font-size: 23px;
+      line-height: 1.12;
+      letter-spacing: -0.7px;
+      font-weight: 850;
+      color: #101c16;
+    }
+
+    .flow-total {
+      min-width: 82px;
+      padding: 12px 14px;
+      border-radius: 22px;
+      background: #e8f8ef;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .flow-total strong {
+      display: block;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -1px;
+      color: #08753f;
+    }
+
+    .flow-total span {
+      display: block;
+      margin-top: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #527064;
+    }
+
+    .flow-stats {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 14px 16px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid rgba(15, 122, 67, 0.07);
+      margin-bottom: 18px;
+    }
+
+    .flow-stat {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .flow-stat strong {
+      font-size: 18px;
+      line-height: 1;
+      font-weight: 900;
+      color: #101c16;
+    }
+
+    .flow-stat span:last-child {
+      font-size: 12px;
+      font-weight: 750;
+      color: #68776f;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+
+    .dot.known {
+      background: #0f8a4f;
+    }
+
+    .dot.learning {
+      background: #8eddb1;
+    }
+
+    .dot.difficult {
+      background: #f0b35a;
+    }
+
+    .flow-week-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .flow-week-header span,
+    .flow-week-header strong {
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .flow-week-header span {
+      color: #75827b;
+    }
+
+    .flow-week-header strong {
+      color: #102018;
+    }
+
+    .flow-bars {
+      height: 72px;
+      padding: 12px 14px 10px;
+      border-radius: 22px;
+      background: rgba(239, 249, 243, 0.8);
+      border: 1px solid rgba(15, 122, 67, 0.06);
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      align-items: end;
+      gap: 8px;
+    }
+
+    .flow-day {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+    }
+
+    .bar {
+      width: 8px;
+      min-height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #bdeccd 0%, #dff6e8 100%);
+    }
+
+    .flow-day.active .bar {
+      width: 10px;
+      background: linear-gradient(180deg, #0f8a4f 0%, #44c77d 100%);
+      box-shadow: 0 8px 16px rgba(15, 138, 79, 0.2);
+    }
+
+    .flow-day span {
+      font-size: 10px;
+      font-weight: 850;
+      color: #7a8980;
+    }
+
+    .flow-day.active span {
+      color: #0f7a43;
+    }
+
+    .flow-day.muted {
+      opacity: 0.62;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="phone-preview">
+    <section class="flow-card">
+      <div class="flow-top">
+        <div>
+          <p class="flow-label">Today’s flow</p>
+          <h3>You’re making progress.</h3>
+        </div>
+
+        <div class="flow-total">
+          <strong>12</strong>
+          <span>reviewed</span>
+        </div>
+      </div>
+
+      <div class="flow-stats">
+        <div class="flow-stat">
+          <span class="dot known"></span>
+          <strong>4</strong>
+          <span>known</span>
+        </div>
+
+        <div class="flow-stat">
+          <span class="dot learning"></span>
+          <strong>6</strong>
+          <span>learning</span>
+        </div>
+
+        <div class="flow-stat">
+          <span class="dot difficult"></span>
+          <strong>2</strong>
+          <span>difficult</span>
+        </div>
+      </div>
+
+      <div class="flow-week">
+        <div class="flow-week-header">
+          <span>This week</span>
+          <strong>48 cards</strong>
+        </div>
+
+        <div class="flow-bars">
+          <div class="flow-day">
+            <div class="bar" style="height: 34%"></div>
+            <span>Mo</span>
+          </div>
+
+          <div class="flow-day">
+            <div class="bar" style="height: 58%"></div>
+            <span>Tu</span>
+          </div>
+
+          <div class="flow-day">
+            <div class="bar" style="height: 42%"></div>
+            <span>We</span>
+          </div>
+
+          <div class="flow-day">
+            <div class="bar" style="height: 76%"></div>
+            <span>Th</span>
+          </div>
+
+          <div class="flow-day active">
+            <div class="bar" style="height: 92%"></div>
+            <span>Fr</span>
+          </div>
+
+          <div class="flow-day muted">
+            <div class="bar" style="height: 28%"></div>
+            <span>Sa</span>
+          </div>
+
+          <div class="flow-day muted">
+            <div class="bar" style="height: 38%"></div>
+            <span>Su</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

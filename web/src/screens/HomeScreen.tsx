@@ -133,10 +133,10 @@ export function HomeScreen({
             <span className="premium-label">Active set</span>
             <span className="active-deck-row">
               <span className="active-deck-name">{activeSetName}</span>
-              <span className="active-deck-count">{activeSetCardCount} cards</span>
             </span>
             <span className="active-deck-progress">
-              {learnedCardCount} learned - {learningCardCount} learning - {difficultCardCount} difficult
+              {activeSetCardCount} cards: {learnedCardCount} learned - {learningCardCount} learning -{" "}
+              {difficultCardCount} difficult
             </span>
           </span>
         </button>
@@ -145,7 +145,7 @@ export function HomeScreen({
         </button>
       </article>
 
-      <section className="dashboard-action-grid" aria-label="Learning actions">
+      <section className="dashboard-action-grid" aria-label="Learning overview">
         <button type="button" className="practice-card" onClick={onContinueLearning}>
           <span className="practice-card-copy">
             <span className="practice-card-title">Practice cards</span>
@@ -159,18 +159,83 @@ export function HomeScreen({
           </span>
         </button>
 
-        <button type="button" className="mini-action-card" onClick={onBrowseSets}>
-          <span className="mini-action-top">
-            <span>
-              <span className="mini-action-title">Browse sets</span>
-              <span className="mini-action-subtitle">Explore your decks and ready-made packs.</span>
-            </span>
-            <span className="mini-action-icon" aria-hidden>
-              <GridIcon />
-            </span>
-          </span>
-          <span className="mini-action-subtitle">{activeSetCardCount} cards active</span>
-        </button>
+        <section className="today-flow-card" aria-labelledby="today-flow-title">
+          <div className="today-flow-top">
+            <div>
+              <p className="today-flow-label">Today's flow</p>
+              <h3 id="today-flow-title">You're making progress.</h3>
+            </div>
+
+            <div className="today-flow-total" aria-label="12 cards reviewed">
+              <strong>12</strong>
+              <span>reviewed</span>
+            </div>
+          </div>
+
+          <div className="today-flow-stats" aria-label="Today's practice mix">
+            <div className="today-flow-stat">
+              <span className="today-flow-dot known" aria-hidden />
+              <strong>4</strong>
+              <span>known</span>
+            </div>
+
+            <div className="today-flow-stat">
+              <span className="today-flow-dot learning" aria-hidden />
+              <strong>6</strong>
+              <span>learning</span>
+            </div>
+
+            <div className="today-flow-stat">
+              <span className="today-flow-dot difficult" aria-hidden />
+              <strong>2</strong>
+              <span>difficult</span>
+            </div>
+          </div>
+
+          <div className="today-flow-week">
+            <div className="today-flow-week-header">
+              <span>This week</span>
+              <strong>48 cards</strong>
+            </div>
+
+            <div className="today-flow-bars" aria-label="Weekly practice preview">
+              <div className="today-flow-day">
+                <div className="today-flow-bar height-34" />
+                <span>Mo</span>
+              </div>
+
+              <div className="today-flow-day">
+                <div className="today-flow-bar height-58" />
+                <span>Tu</span>
+              </div>
+
+              <div className="today-flow-day">
+                <div className="today-flow-bar height-42" />
+                <span>We</span>
+              </div>
+
+              <div className="today-flow-day">
+                <div className="today-flow-bar height-76" />
+                <span>Th</span>
+              </div>
+
+              <div className="today-flow-day active">
+                <div className="today-flow-bar height-92" />
+                <span>Fr</span>
+              </div>
+
+              <div className="today-flow-day muted">
+                <div className="today-flow-bar height-28" />
+                <span>Sa</span>
+              </div>
+
+              <div className="today-flow-day muted">
+                <div className="today-flow-bar height-38" />
+                <span>Su</span>
+              </div>
+            </div>
+          </div>
+        </section>
       </section>
     </div>
   );
@@ -210,17 +275,6 @@ function PlayIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden>
       <path d="M8 5v14l11-7-11-7Z" />
-    </svg>
-  );
-}
-
-function GridIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden>
-      <path d="M4.5 4.5h6v6h-6z" />
-      <path d="M13.5 4.5h6v6h-6z" />
-      <path d="M4.5 13.5h6v6h-6z" />
-      <path d="M13.5 13.5h6v6h-6z" />
     </svg>
   );
 }
