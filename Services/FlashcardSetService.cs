@@ -13,6 +13,8 @@ namespace SimpleFlashCards.Services
         private readonly string _learningStatePath;
         private readonly string _learningQueuePath;
         private readonly string _learningProgressPath;
+        private readonly string _databasePath;
+        private readonly SqliteFlashcardStore _store;
         private readonly Random _random;
 
         private FlashcardSet? _activeSet;
@@ -20,6 +22,7 @@ namespace SimpleFlashCards.Services
         private LearningProgressSnapshot _learningProgress = new();
         private bool _learningProgressLoaded;
         private bool _isQuickLessonDone;
+        private bool _legacyJsonMigrated;
 
         /// <param name="applicationBaseDirectory">Directory containing the <c>Data</c> folder (defaults to <see cref="AppContext.BaseDirectory"/>).</param>
         public FlashcardSetService(string? applicationBaseDirectory = null, Random? random = null)
@@ -31,7 +34,12 @@ namespace SimpleFlashCards.Services
             _learningStatePath = Path.Combine(_dataDirectory, "learning_state.json");
             _learningQueuePath = Path.Combine(_dataDirectory, "learning_queue.json");
             _learningProgressPath = Path.Combine(_dataDirectory, "learning_progress.json");
+            _databasePath = Path.Combine(_dataDirectory, "simple_flashcards.db");
+            _store = new SqliteFlashcardStore(_databasePath);
             _random = random ?? Random.Shared;
+
+            _store.EnsureCreated();
+            MigrateLegacyJsonFilesIfNeeded();
         }
 
         private static void EnsureDataDirectoryExists(string directory)
@@ -52,26 +60,21 @@ namespace SimpleFlashCards.Services
 
         public void LoadUserSets()
         {
-            if (!File.Exists(_userSetsPath))
-                return;
+            MigrateLegacyJsonFilesIfNeeded();
 
-            var json = File.ReadAllText(_userSetsPath);
-
-            var sets = JsonSerializer.Deserialize<List<FlashcardSet>>(json);
-
-            if (sets == null)
-                return;
-
+            var sets = _store.LoadSets(FlashcardSetSource.User);
             var hadLegacyIds = sets.Any(s =>
                 s.Id == Guid.Empty || s.Flashcards.Any(c => c.Id == Guid.Empty));
 
             foreach (var set in sets)
                 set.Source = FlashcardSetSource.User;
 
+            EntityIdNormalizer.EnsureIds(sets);
+            var normalizedLearningProgress = NormalizeLearningProgress(sets);
+            var appliedLearningProgress = ApplySavedLearningProgress(sets);
+
+            _userSets.Clear();
             _userSets.AddRange(sets);
-            EntityIdNormalizer.EnsureIds(_userSets);
-            var normalizedLearningProgress = NormalizeLearningProgress(_userSets);
-            var appliedLearningProgress = ApplySavedLearningProgress(_userSets);
 
             if (hadLegacyIds || normalizedLearningProgress || appliedLearningProgress)
                 SaveUserSets();
@@ -83,37 +86,54 @@ namespace SimpleFlashCards.Services
 
         public void SaveUserSets()
         {
-            EnsureDataDirectoryExists(_dataDirectory);
-            var json = JsonSerializer.Serialize(
-                _userSets,
-                new JsonSerializerOptions { WriteIndented = true });
+            MigrateLegacyJsonFilesIfNeeded();
 
-            File.WriteAllText(_userSetsPath, json);
+            EntityIdNormalizer.EnsureIds(_userSets);
+            NormalizeLearningProgress(_userSets);
+
+            foreach (var set in _userSets)
+                set.Source = FlashcardSetSource.User;
+
+            _store.SaveSets(_userSets, FlashcardSetSource.User);
         }
 
         public List<FlashcardSet> GetDefaultSets()
         {
+            MigrateLegacyJsonFilesIfNeeded();
+
             if (_defaultSetsCache != null)
                 return _defaultSetsCache;
 
-            if (!File.Exists(_defaultSetsPath))
+            if (File.Exists(_defaultSetsPath))
             {
-                _defaultSetsCache = new List<FlashcardSet>();
-                return _defaultSetsCache;
+                var json = File.ReadAllText(_defaultSetsPath);
+                var importedDefaults = JsonSerializer.Deserialize<List<FlashcardSet>>(json)
+                                       ?? new List<FlashcardSet>();
+
+                foreach (var set in importedDefaults)
+                    set.Source = FlashcardSetSource.ReadyMade;
+
+                EntityIdNormalizer.EnsureIds(importedDefaults, useStableIds: true);
+                NormalizeLearningProgress(importedDefaults);
+                _store.SaveSets(
+                    importedDefaults,
+                    FlashcardSetSource.ReadyMade,
+                    preserveExistingCardProgress: true);
             }
 
-            var json = File.ReadAllText(_defaultSetsPath);
-
-            var list = JsonSerializer.Deserialize<List<FlashcardSet>>(json)
-                       ?? new List<FlashcardSet>();
+            var list = _store.LoadSets(FlashcardSetSource.ReadyMade);
 
             foreach (var set in list)
                 set.Source = FlashcardSetSource.ReadyMade;
 
             EntityIdNormalizer.EnsureIds(list, useStableIds: true);
-            NormalizeLearningProgress(list);
-            ApplySavedLearningProgress(list);
+            var normalizedLearningProgress = NormalizeLearningProgress(list);
+            var appliedLearningProgress = ApplySavedLearningProgress(list);
             _defaultSetsCache = list;
+
+            if (normalizedLearningProgress || appliedLearningProgress)
+                _store.SaveSets(_defaultSetsCache, FlashcardSetSource.ReadyMade);
+
             return _defaultSetsCache;
         }
 
@@ -257,7 +277,6 @@ namespace SimpleFlashCards.Services
 
         public void SaveLearningState()
         {
-            EnsureDataDirectoryExists(_dataDirectory);
             var state = new LearningState
             {
                 ActiveSetId = _activeSet?.Id,
@@ -265,12 +284,7 @@ namespace SimpleFlashCards.Services
                 IsQuickLessonDone = _isQuickLessonDone
             };
 
-            var json = JsonSerializer.Serialize(state, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
-
-            File.WriteAllText(_learningStatePath, json);
+            _store.SaveLearningState(state);
         }
 
         public void SaveLearningQueue()
@@ -281,24 +295,21 @@ namespace SimpleFlashCards.Services
                 return;
             }
 
-            EnsureDataDirectoryExists(_dataDirectory);
             var snapshot = new LearningQueueSnapshot
             {
                 ActiveSetId = _activeSet.Id,
                 CardIds = _learningQueue.Snapshot().Select(c => c.Id).ToList()
             };
 
-            var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_learningQueuePath, json);
+            _store.SaveLearningQueue(snapshot);
         }
 
         public void LoadLearningQueue()
         {
-            if (!File.Exists(_learningQueuePath) || _activeSet == null)
+            if (_activeSet == null)
                 return;
 
-            var json = File.ReadAllText(_learningQueuePath);
-            var snapshot = JsonSerializer.Deserialize<LearningQueueSnapshot>(json);
+            var snapshot = _store.LoadLearningQueue();
 
             if (snapshot == null)
                 return;
@@ -319,7 +330,6 @@ namespace SimpleFlashCards.Services
 
         public void SaveLearningProgress()
         {
-            EnsureDataDirectoryExists(_dataDirectory);
             var progress = GetLoadedLearningProgressSnapshot();
 
             var readyMadeSets = (_defaultSetsCache ?? new List<FlashcardSet>())
@@ -347,8 +357,10 @@ namespace SimpleFlashCards.Services
                         .ToList()
             };
 
-            var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_learningProgressPath, json);
+            _store.SaveLearningProgressSnapshot(snapshot);
+            if (_defaultSetsCache != null)
+                _store.SaveSets(readyMadeSets, FlashcardSetSource.ReadyMade);
+
             _learningProgress = NormalizeLearningProgressSnapshot(snapshot);
             _learningProgressLoaded = true;
         }
@@ -397,15 +409,9 @@ namespace SimpleFlashCards.Services
 
         private LearningProgressSnapshot LoadLearningProgressSnapshot()
         {
-            if (!File.Exists(_learningProgressPath))
-                return new LearningProgressSnapshot();
-
             try
             {
-                var json = File.ReadAllText(_learningProgressPath);
-                return NormalizeLearningProgressSnapshot(
-                    JsonSerializer.Deserialize<LearningProgressSnapshot>(json)
-                    ?? new LearningProgressSnapshot());
+                return NormalizeLearningProgressSnapshot(_store.LoadLearningProgressSnapshot());
             }
             catch
             {
@@ -486,12 +492,154 @@ namespace SimpleFlashCards.Services
             progress.IsLearned ||
             progress.LastReviewedAt.HasValue;
 
+        private void MigrateLegacyJsonFilesIfNeeded()
+        {
+            if (_legacyJsonMigrated)
+                return;
+
+            if (_store.IsLegacyJsonMigrationComplete())
+            {
+                _legacyJsonMigrated = true;
+                return;
+            }
+
+            var legacyProgress = LoadLegacyLearningProgressSnapshot();
+            var userSets = LoadLegacySets(
+                _userSetsPath,
+                FlashcardSetSource.User,
+                useStableIds: false);
+            var defaultSets = LoadLegacySets(
+                _defaultSetsPath,
+                FlashcardSetSource.ReadyMade,
+                useStableIds: true);
+
+            ApplyLearningProgressSnapshot(userSets, legacyProgress);
+            ApplyLearningProgressSnapshot(defaultSets, legacyProgress);
+
+            if (userSets.Count > 0)
+                _store.SaveSets(userSets, FlashcardSetSource.User);
+
+            if (defaultSets.Count > 0)
+                _store.SaveSets(defaultSets, FlashcardSetSource.ReadyMade);
+
+            _store.SaveLearningProgressSnapshot(legacyProgress);
+
+            if (userSets.Count > 0)
+                _store.SaveSets(userSets, FlashcardSetSource.User);
+
+            if (defaultSets.Count > 0)
+                _store.SaveSets(defaultSets, FlashcardSetSource.ReadyMade);
+
+            var legacyState = LoadLegacyJson<LearningState>(_learningStatePath);
+            if (legacyState != null)
+                _store.SaveLearningState(legacyState);
+
+            var legacyQueue = LoadLegacyJson<LearningQueueSnapshot>(_learningQueuePath);
+            if (legacyQueue != null)
+            {
+                try
+                {
+                    _store.SaveLearningQueue(legacyQueue);
+                }
+                catch
+                {
+                    // Legacy queue rows can point at cards that no longer exist.
+                }
+            }
+
+            _store.MarkLegacyJsonMigrationComplete();
+            _legacyJsonMigrated = true;
+        }
+
+        private static List<FlashcardSet> LoadLegacySets(
+            string path,
+            FlashcardSetSource source,
+            bool useStableIds)
+        {
+            if (!File.Exists(path))
+                return new List<FlashcardSet>();
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var sets = JsonSerializer.Deserialize<List<FlashcardSet>>(json)
+                           ?? new List<FlashcardSet>();
+
+                foreach (var set in sets)
+                    set.Source = source;
+
+                EntityIdNormalizer.EnsureIds(sets, useStableIds);
+                NormalizeLearningProgress(sets);
+                return sets;
+            }
+            catch
+            {
+                return new List<FlashcardSet>();
+            }
+        }
+
+        private LearningProgressSnapshot LoadLegacyLearningProgressSnapshot()
+        {
+            var snapshot = LoadLegacyJson<LearningProgressSnapshot>(_learningProgressPath)
+                           ?? new LearningProgressSnapshot();
+
+            return NormalizeLearningProgressSnapshot(snapshot);
+        }
+
+        private static T? LoadLegacyJson<T>(string path)
+        {
+            if (!File.Exists(path))
+                return default;
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                return JsonSerializer.Deserialize<T>(json);
+            }
+            catch
+            {
+                return default;
+            }
+        }
+
+        private static bool ApplyLearningProgressSnapshot(
+            IEnumerable<FlashcardSet> sets,
+            LearningProgressSnapshot snapshot)
+        {
+            if (snapshot.Cards.Count == 0)
+                return false;
+
+            var progressByCard = snapshot.Cards
+                .GroupBy(card => (card.SetId, card.CardId))
+                .ToDictionary(group => group.Key, group => group.Last());
+
+            var appliedProgress = false;
+            foreach (var set in sets)
+            {
+                foreach (var card in set.Flashcards)
+                {
+                    if (!progressByCard.TryGetValue((set.Id, card.Id), out var progress))
+                        continue;
+
+                    if (set.Source == FlashcardSetSource.User && HasLearningProgress(card))
+                        continue;
+
+                    if (set.Source == FlashcardSetSource.User && !HasLearningProgress(progress))
+                        continue;
+
+                    ApplyLearningProgress(card, progress);
+                    appliedProgress = true;
+                }
+            }
+
+            return appliedProgress;
+        }
+
         private void TryDeleteLearningQueueFile()
         {
             try
             {
-                if (File.Exists(_learningQueuePath))
-                    File.Delete(_learningQueuePath);
+                _store.ClearLearningQueue();
             }
             catch
             {
@@ -501,11 +649,7 @@ namespace SimpleFlashCards.Services
 
         public void LoadLearningState()
         {
-            if (!File.Exists(_learningStatePath))
-                return;
-
-            var json = File.ReadAllText(_learningStatePath);
-            var state = JsonSerializer.Deserialize<LearningState>(json);
+            var state = _store.LoadLearningState();
 
             if (state == null)
                 return;

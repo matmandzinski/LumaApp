@@ -55,11 +55,12 @@ public class FlashcardSetServicePersistenceTests : IDisposable
 
         service.SaveUserSets();
 
-        var json = File.ReadAllText(Path.Combine(dataDir, "user_sets.json"));
-        var parsed = JsonSerializer.Deserialize<List<FlashcardSet>>(json);
-        Assert.NotNull(parsed);
-        Assert.NotEqual(Guid.Empty, parsed![0].Id);
-        Assert.Equal(FlashcardSetSource.User, parsed[0].Source);
+        Assert.True(File.Exists(Path.Combine(dataDir, "simple_flashcards.db")));
+
+        var fresh = new FlashcardSetService(_tempRoot);
+        fresh.LoadUserSets();
+        Assert.NotEqual(Guid.Empty, fresh.GetUserSets()[0].Id);
+        Assert.Equal(FlashcardSetSource.User, fresh.GetUserSets()[0].Source);
     }
 
     [Fact]
@@ -188,11 +189,12 @@ public class FlashcardSetServicePersistenceTests : IDisposable
         Assert.False(loadedCard.IsLearned);
         Assert.Equal(savedProgress.Cards[0].LastReviewedAt, loadedCard.LastReviewedAt);
 
-        var storedSets = JsonSerializer.Deserialize<List<FlashcardSet>>(
-            File.ReadAllText(Path.Combine(dataDir, "user_sets.json")));
-        Assert.NotNull(storedSets);
-        Assert.Equal(-1, storedSets![0].Flashcards[0].LearningStage);
-        Assert.Equal(2, storedSets[0].Flashcards[0].ReviewAgainStreak);
+        var fresh = new FlashcardSetService(_tempRoot);
+        fresh.LoadUserSets();
+
+        var storedCard = fresh.GetUserSets()[0].Flashcards[0];
+        Assert.Equal(-1, storedCard.LearningStage);
+        Assert.Equal(2, storedCard.ReviewAgainStreak);
     }
 
     [Fact]
@@ -388,20 +390,22 @@ public class FlashcardSetServicePersistenceTests : IDisposable
         service.GetOrCreateQueue();
         service.SaveLearningQueue();
 
-        var queuePath = Path.Combine(dataDir, "learning_queue.json");
-        Assert.True(File.Exists(queuePath));
+        var restoredBeforeDelete = new FlashcardSetService(_tempRoot);
+        restoredBeforeDelete.LoadUserSets();
+        restoredBeforeDelete.LoadLearningState();
+        restoredBeforeDelete.LoadLearningQueue();
+        Assert.NotNull(restoredBeforeDelete.GetActiveSet());
+        Assert.Single(restoredBeforeDelete.GetOrCreateQueue(rebuildIfEmpty: false).Snapshot());
 
         service.RemoveUserSet(loaded);
         service.SaveUserSets();
 
-        Assert.False(File.Exists(queuePath));
+        var restoredAfterDelete = new FlashcardSetService(_tempRoot);
+        restoredAfterDelete.LoadUserSets();
+        restoredAfterDelete.LoadLearningState();
 
-        var statePath = Path.Combine(dataDir, "learning_state.json");
-        Assert.True(File.Exists(statePath));
-        var state = JsonSerializer.Deserialize<LearningState>(File.ReadAllText(statePath));
-        Assert.NotNull(state);
-        Assert.Null(state!.ActiveSetId);
-        Assert.Null(state.ActiveSetName);
+        Assert.Empty(restoredAfterDelete.GetUserSets());
+        Assert.Null(restoredAfterDelete.GetActiveSet());
     }
 
     [Fact]
@@ -420,12 +424,21 @@ public class FlashcardSetServicePersistenceTests : IDisposable
         service.GetOrCreateQueue();
         service.SaveLearningQueue();
 
-        var queuePath = Path.Combine(dataDir, "learning_queue.json");
-        Assert.True(File.Exists(queuePath));
+        var restoredBeforeSwitch = new FlashcardSetService(_tempRoot);
+        restoredBeforeSwitch.LoadUserSets();
+        restoredBeforeSwitch.LoadLearningState();
+        restoredBeforeSwitch.LoadLearningQueue();
+        Assert.Single(restoredBeforeSwitch.GetOrCreateQueue(rebuildIfEmpty: false).Snapshot());
 
         service.SetActiveSet(service.GetUserSets()[1]);
 
-        Assert.False(File.Exists(queuePath));
+        var restoredAfterSwitch = new FlashcardSetService(_tempRoot);
+        restoredAfterSwitch.LoadUserSets();
+        restoredAfterSwitch.LoadLearningState();
+        restoredAfterSwitch.LoadLearningQueue();
+
+        Assert.Equal(set2.Id, restoredAfterSwitch.GetActiveSet()!.Id);
+        Assert.Equal("b", restoredAfterSwitch.GetOrCreateQueue().GetNext().Front);
     }
 
     [Fact]

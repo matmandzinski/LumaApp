@@ -9,6 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Data\default_sets.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
