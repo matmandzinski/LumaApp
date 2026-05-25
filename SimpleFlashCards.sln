@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleFlashCards", "SimpleF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleFlashCards.Tests", "SimpleFlashCards.Tests\SimpleFlashCards.Tests.csproj", "{38FBE77D-0EE7-4D0E-AF51-85C6B72C1616}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SimpleFlashCards.Api", "SimpleFlashCards.Api\SimpleFlashCards.Api.csproj", "{26A52F58-1075-468C-BDEE-3D4F6B952272}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{38FBE77D-0EE7-4D0E-AF51-85C6B72C1616}.Release|x64.Build.0 = Release|Any CPU
 		{38FBE77D-0EE7-4D0E-AF51-85C6B72C1616}.Release|x86.ActiveCfg = Release|Any CPU
 		{38FBE77D-0EE7-4D0E-AF51-85C6B72C1616}.Release|x86.Build.0 = Release|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Debug|x64.Build.0 = Debug|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Debug|x86.Build.0 = Debug|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Release|Any CPU.Build.0 = Release|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Release|x64.ActiveCfg = Release|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Release|x64.Build.0 = Release|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Release|x86.ActiveCfg = Release|Any CPU
+		{26A52F58-1075-468C-BDEE-3D4F6B952272}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

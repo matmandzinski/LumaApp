@@ -23,9 +23,17 @@ Thumbs.db
 Data/user_sets.json
 Data/learning_state.json
 Data/learning_queue.json
+Data/simple_flashcards.db
+Data/simple_flashcards.db-shm
+Data/simple_flashcards.db-wal
 **/Data/user_sets.json
 **/Data/learning_state.json
 **/Data/learning_queue.json
+**/Data/simple_flashcards.db
+**/Data/simple_flashcards.db-shm
+**/Data/simple_flashcards.db-wal
+*.log
+*.err
 
 # Test results
 TestResults/
