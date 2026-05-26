@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using SimpleFlashCards.Models;
 using SimpleFlashCards.Services;
 
@@ -105,6 +106,53 @@ public class FlashcardSetServicePersistenceTests : IDisposable
         Assert.Equal(0, loadedCard.ReviewAgainStreak);
         Assert.False(loadedCard.IsLearned);
         Assert.Equal(card.LastReviewedAt, loadedCard.LastReviewedAt);
+    }
+
+    [Fact]
+    public void LoadUserSets_Treats_Missing_LocalUser_Progress_As_New_Card()
+    {
+        var service = new FlashcardSetService(_tempRoot);
+        var card = new Flashcard("x", "y");
+        var set = new FlashcardSet("Mine", new[] { card });
+        service.AddUserSet(set);
+        service.SaveUserSets();
+
+        using (var connection = new SqliteConnection(
+                   $"Data Source={Path.Combine(_tempRoot, "Data", "simple_flashcards.db")}"))
+        {
+            connection.Open();
+
+            using var deleteProgress = connection.CreateCommand();
+            deleteProgress.CommandText = """
+                DELETE FROM user_card_progress
+                WHERE user_id = $userId
+                  AND card_id = $cardId;
+                """;
+            deleteProgress.Parameters.AddWithValue("$userId", SqliteFlashcardStore.DefaultLocalUserId);
+            deleteProgress.Parameters.AddWithValue("$cardId", card.Id.ToString("D"));
+            deleteProgress.ExecuteNonQuery();
+
+            using var resetLegacyProgress = connection.CreateCommand();
+            resetLegacyProgress.CommandText = """
+                UPDATE flashcards
+                SET learning_stage = 0,
+                    review_again_streak = 0,
+                    is_learned = 0,
+                    last_reviewed_at = NULL
+                WHERE id = $cardId;
+                """;
+            resetLegacyProgress.Parameters.AddWithValue("$cardId", card.Id.ToString("D"));
+            resetLegacyProgress.ExecuteNonQuery();
+        }
+
+        var fresh = new FlashcardSetService(_tempRoot);
+        fresh.LoadUserSets();
+
+        var loadedCard = fresh.GetUserSets()[0].Flashcards[0];
+        Assert.Equal(0, loadedCard.LearningStage);
+        Assert.Equal(0, loadedCard.ReviewAgainStreak);
+        Assert.False(loadedCard.IsLearned);
+        Assert.Null(loadedCard.LastReviewedAt);
     }
 
     [Fact]

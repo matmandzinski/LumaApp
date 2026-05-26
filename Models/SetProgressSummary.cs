@@ -6,11 +6,15 @@ public class SetProgressSummary
 
     public string ExternalId { get; set; } = string.Empty;
 
-    public int TotalCards { get; set; }
+    public string UserId { get; set; } = string.Empty;
 
-    public int LearnedCards { get; set; }
+    public int CardCount { get; set; }
 
-    public int LearningCards { get; set; }
+    public int NewCount { get; set; }
 
-    public int DifficultCards { get; set; }
+    public int LearningCount { get; set; }
+
+    public int LearnedCount { get; set; }
+
+    public int DifficultCount { get; set; }
 }

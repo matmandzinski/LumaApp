@@ -79,6 +79,16 @@ api.MapGet("/sets/{externalSetId}", (string externalSetId, SqliteFlashcardStore 
     .WithSummary("Read one flashcard set by external id.")
     .WithDescription("The route prefers externalId and also accepts the internal GUID during migration.");
 
+api.MapGet("/sets/{externalSetId}/progress", (string externalSetId, SqliteFlashcardStore store) =>
+    {
+        if (!TryLoadSet(store, externalSetId, out var set, out var error))
+            return error;
+
+        return Results.Ok(ToProgressSummaryResponse(store.LoadSetProgressSummary(set!.Id)));
+    })
+    .WithSummary("Read local-user progress for one flashcard set.")
+    .WithDescription("Progress is currently scoped to the placeholder local-user until real authentication exists.");
+
 api.MapPost("/sets", (CreateSetRequest request, SqliteFlashcardStore store) =>
     {
         var name = NormalizeRequiredText(request.Name);
@@ -467,17 +477,21 @@ static FlashcardSetSummaryResponse ToSummaryResponse(FlashcardSet set) =>
     new(
         FormatId(set.Id),
         set.ExternalId,
+        set.OwnerUserId,
         set.Name,
         set.Source.ToString(),
-        set.Flashcards.Count);
+        set.Flashcards.Count,
+        ToProgressSummaryResponse(CreateProgressSummary(set)));
 
 static FlashcardSetResponse ToSetResponse(FlashcardSet set) =>
     new(
         FormatId(set.Id),
         set.ExternalId,
+        set.OwnerUserId,
         set.Name,
         set.Source.ToString(),
         set.Flashcards.Count,
+        ToProgressSummaryResponse(CreateProgressSummary(set)),
         set.Flashcards.Select(ToCardResponse).ToList());
 
 static FlashcardResponse ToCardResponse(Flashcard card) =>
@@ -488,16 +502,42 @@ static FlashcardResponse ToCardResponse(Flashcard card) =>
         card.LearningStage,
         card.ReviewAgainStreak,
         card.IsLearned,
-        card.LastReviewedAt);
+        card.LastReviewedAt,
+        card.EaseFactor,
+        card.Repetitions,
+        card.IntervalDays,
+        card.NextReviewUtc);
+
+static SetProgressSummary CreateProgressSummary(FlashcardSet set)
+{
+    var learnedCount = set.Flashcards.Count(card => card.IsLearned || card.LearningStage >= 3);
+    var difficultCount = set.Flashcards.Count(card => card.LearningStage == -1);
+    var learningCount = set.Flashcards.Count(card => card.LearningStage is 1 or 2);
+    var newCount = set.Flashcards.Count(card => !card.IsLearned && card.LearningStage == 0);
+
+    return new SetProgressSummary
+    {
+        SetId = set.Id,
+        ExternalId = set.ExternalId,
+        UserId = SqliteFlashcardStore.DefaultLocalUserId,
+        CardCount = set.Flashcards.Count,
+        NewCount = newCount,
+        LearningCount = learningCount,
+        LearnedCount = learnedCount,
+        DifficultCount = difficultCount
+    };
+}
 
 static SetProgressSummaryResponse ToProgressSummaryResponse(SetProgressSummary summary) =>
     new(
-        FormatId(summary.SetId),
         summary.ExternalId,
-        summary.TotalCards,
-        summary.LearnedCards,
-        summary.LearningCards,
-        summary.DifficultCards);
+        FormatId(summary.SetId),
+        summary.UserId,
+        summary.CardCount,
+        summary.NewCount,
+        summary.LearningCount,
+        summary.LearnedCount,
+        summary.DifficultCount);
 
 static LessonSnapshotResponse? ToLessonSnapshotResponse(LessonSnapshot? snapshot, SqliteFlashcardStore store)
 {
@@ -546,16 +586,20 @@ public sealed record AppStateResponse(
 public sealed record FlashcardSetSummaryResponse(
     string Id,
     string ExternalId,
+    string? OwnerUserId,
     string Name,
     string Source,
-    int CardCount);
+    int CardCount,
+    SetProgressSummaryResponse ProgressSummary);
 
 public sealed record FlashcardSetResponse(
     string Id,
     string ExternalId,
+    string? OwnerUserId,
     string Name,
     string Source,
     int CardCount,
+    SetProgressSummaryResponse ProgressSummary,
     IReadOnlyList<FlashcardResponse> Flashcards);
 
 public sealed record FlashcardResponse(
@@ -565,7 +609,11 @@ public sealed record FlashcardResponse(
     int LearningStage,
     int ReviewAgainStreak,
     bool IsLearned,
-    DateTime? LastReviewedAt);
+    DateTime? LastReviewedAt,
+    double EaseFactor,
+    int Repetitions,
+    int IntervalDays,
+    DateTime? NextReviewAt);
 
 public sealed record CreateSetRequest(
     string? Name,
@@ -586,12 +634,14 @@ public sealed record DeleteCardResponse(
     bool Deleted);
 
 public sealed record SetProgressSummaryResponse(
-    string Id,
-    string ExternalId,
-    int TotalCards,
-    int LearnedCards,
-    int LearningCards,
-    int DifficultCards);
+    string ExternalSetId,
+    string InternalSetId,
+    string UserId,
+    int CardCount,
+    int NewCount,
+    int LearningCount,
+    int LearnedCount,
+    int DifficultCount);
 
 public sealed record ActiveSetRequest(string ActiveSetId);
 

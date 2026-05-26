@@ -8,6 +8,8 @@ namespace SimpleFlashCards.Services;
 
 public class SqliteFlashcardStore
 {
+    public const string DefaultLocalUserId = "local-user";
+
     private const string MigrationMetadataKey = "legacy_json_migration_v1";
 
     private readonly string _databasePath;
@@ -37,6 +39,7 @@ public class SqliteFlashcardStore
             CREATE TABLE IF NOT EXISTS flashcard_sets (
                 id TEXT NOT NULL PRIMARY KEY,
                 external_id TEXT NULL,
+                owner_user_id TEXT NULL,
                 name TEXT NOT NULL,
                 source TEXT NOT NULL,
                 sort_order INTEGER NOT NULL DEFAULT 0
@@ -48,6 +51,14 @@ public class SqliteFlashcardStore
             ExecuteNonQuery(connection, null, """
                 ALTER TABLE flashcard_sets
                 ADD COLUMN external_id TEXT NULL;
+                """);
+        }
+
+        if (!ColumnExists(connection, "flashcard_sets", "owner_user_id"))
+        {
+            ExecuteNonQuery(connection, null, """
+                ALTER TABLE flashcard_sets
+                ADD COLUMN owner_user_id TEXT NULL;
                 """);
         }
 
@@ -76,6 +87,7 @@ public class SqliteFlashcardStore
             """);
 
         EnsureFlashcardSetExternalIds(connection);
+        EnsureFlashcardSetOwnerUserIds(connection);
 
         if (!HasDuplicateExternalIds(connection))
         {
@@ -85,6 +97,32 @@ public class SqliteFlashcardStore
                 WHERE external_id IS NOT NULL;
                 """);
         }
+
+        ExecuteNonQuery(connection, null, """
+            CREATE TABLE IF NOT EXISTS user_card_progress (
+                user_id TEXT NOT NULL,
+                card_id TEXT NOT NULL,
+                learning_stage INTEGER NOT NULL DEFAULT 0,
+                is_learned INTEGER NOT NULL DEFAULT 0,
+                review_again_streak INTEGER NOT NULL DEFAULT 0,
+                last_reviewed_at TEXT NULL,
+                ease_factor REAL NOT NULL DEFAULT 2.5,
+                repetitions INTEGER NOT NULL DEFAULT 0,
+                interval_days INTEGER NOT NULL DEFAULT 0,
+                next_review_at TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, card_id),
+                FOREIGN KEY (card_id) REFERENCES flashcards(id) ON DELETE CASCADE
+            );
+            """);
+
+        ExecuteNonQuery(connection, null, """
+            CREATE INDEX IF NOT EXISTS ix_user_card_progress_card_id
+            ON user_card_progress(card_id);
+            """);
+
+        MigrateLegacyFlashcardProgress(connection);
 
         ExecuteNonQuery(connection, null, """
             CREATE TABLE IF NOT EXISTS learning_state (
@@ -197,7 +235,7 @@ public class SqliteFlashcardStore
 
         using var connection = OpenConnection();
         using var command = CreateCommand(connection, null, """
-            SELECT id, external_id, name, source
+            SELECT id, external_id, owner_user_id, name, source
             FROM flashcard_sets
             WHERE source = $source
             ORDER BY sort_order, name;
@@ -212,8 +250,9 @@ public class SqliteFlashcardStore
             {
                 Id = Guid.Parse(reader.GetString(0)),
                 ExternalId = reader.GetString(1),
-                Name = reader.GetString(2),
-                Source = Enum.Parse<FlashcardSetSource>(reader.GetString(3)),
+                OwnerUserId = ReadNullableString(reader, "owner_user_id"),
+                Name = reader.GetString(3),
+                Source = Enum.Parse<FlashcardSetSource>(reader.GetString(4)),
                 Flashcards = new List<Flashcard>()
             });
         }
@@ -246,6 +285,7 @@ public class SqliteFlashcardStore
             var set = sets[setIndex];
             set.Source = source;
             EnsureExternalId(set, setIndex);
+            EnsureOwnerUserId(set);
             UpsertSet(connection, transaction, set, setIndex);
 
             var desiredCardIds = set.Flashcards.Select(card => card.Id.ToString("D")).ToHashSet();
@@ -274,7 +314,7 @@ public class SqliteFlashcardStore
 
         using var connection = OpenConnection();
         using var command = CreateCommand(connection, null, """
-            SELECT id, external_id, name, source
+            SELECT id, external_id, owner_user_id, name, source
             FROM flashcard_sets
             ORDER BY
                 CASE source WHEN 'User' THEN 0 ELSE 1 END,
@@ -290,8 +330,9 @@ public class SqliteFlashcardStore
             {
                 Id = Guid.Parse(reader.GetString(0)),
                 ExternalId = reader.GetString(1),
-                Name = reader.GetString(2),
-                Source = Enum.Parse<FlashcardSetSource>(reader.GetString(3)),
+                OwnerUserId = ReadNullableString(reader, "owner_user_id"),
+                Name = reader.GetString(3),
+                Source = Enum.Parse<FlashcardSetSource>(reader.GetString(4)),
                 Flashcards = new List<Flashcard>()
             });
         }
@@ -308,7 +349,7 @@ public class SqliteFlashcardStore
 
         using var connection = OpenConnection();
         using var command = CreateCommand(connection, null, """
-            SELECT id, external_id, name, source
+            SELECT id, external_id, owner_user_id, name, source
             FROM flashcard_sets
             WHERE id = $id;
             """);
@@ -322,8 +363,9 @@ public class SqliteFlashcardStore
         {
             Id = Guid.Parse(reader.GetString(0)),
             ExternalId = reader.GetString(1),
-            Name = reader.GetString(2),
-            Source = Enum.Parse<FlashcardSetSource>(reader.GetString(3)),
+            OwnerUserId = ReadNullableString(reader, "owner_user_id"),
+            Name = reader.GetString(3),
+            Source = Enum.Parse<FlashcardSetSource>(reader.GetString(4)),
             Flashcards = new List<Flashcard>()
         };
         reader.Close();
@@ -365,6 +407,7 @@ public class SqliteFlashcardStore
         {
             Id = Guid.NewGuid(),
             Source = FlashcardSetSource.User,
+            OwnerUserId = DefaultLocalUserId,
             Name = name.Trim()
         };
         EnsureExternalId(set, 0);
@@ -450,6 +493,8 @@ public class SqliteFlashcardStore
         using var connection = OpenConnection();
         using var transaction = connection.BeginTransaction();
 
+        UpsertResetUserProgressRows(connection, transaction, setId);
+
         ExecuteNonQuery(connection, transaction, """
             UPDATE flashcards
             SET ease_factor = 2.5,
@@ -496,6 +541,14 @@ public class SqliteFlashcardStore
         var summary = LoadSetProgressSummary(connection, transaction, setId);
         transaction.Commit();
         return summary;
+    }
+
+    public SetProgressSummary LoadSetProgressSummary(Guid setId)
+    {
+        EnsureCreated();
+
+        using var connection = OpenConnection();
+        return LoadSetProgressSummary(connection, null, setId);
     }
 
     public Flashcard CreateCard(Guid setId, string front, string back)
@@ -900,14 +953,23 @@ public class SqliteFlashcardStore
         var snapshot = LoadLearningStats(connection);
 
         using var command = CreateCommand(connection, null, """
-            SELECT set_id, id, learning_stage, review_again_streak, is_learned, last_reviewed_at
-            FROM flashcards
-            WHERE learning_stage <> 0
-               OR review_again_streak <> 0
-               OR is_learned <> 0
-               OR last_reviewed_at IS NOT NULL
-            ORDER BY set_id, sort_order;
+            SELECT c.set_id,
+                   c.id,
+                   p.learning_stage,
+                   p.review_again_streak,
+                   p.is_learned,
+                   p.last_reviewed_at
+            FROM flashcards c
+            INNER JOIN user_card_progress p
+              ON p.card_id = c.id
+             AND p.user_id = $userId
+            WHERE p.learning_stage <> 0
+               OR p.review_again_streak <> 0
+               OR p.is_learned <> 0
+               OR p.last_reviewed_at IS NOT NULL
+            ORDER BY c.set_id, c.sort_order;
             """);
+        command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
@@ -968,6 +1030,16 @@ public class SqliteFlashcardStore
             cardCommand.Parameters.AddWithValue("$setId", card.SetId.ToString("D"));
             cardCommand.Parameters.AddWithValue("$cardId", card.CardId.ToString("D"));
             cardCommand.ExecuteNonQuery();
+
+            UpsertUserCardProgress(
+                connection,
+                transaction,
+                DefaultLocalUserId,
+                card.CardId,
+                card.LearningStage,
+                card.IsLearned,
+                card.ReviewAgainStreak,
+                card.LastReviewedAt);
         }
 
         transaction.Commit();
@@ -979,7 +1051,7 @@ public class SqliteFlashcardStore
         Guid setId)
     {
         using var command = CreateCommand(connection, transaction, """
-            SELECT id, external_id, name, source
+            SELECT id, external_id, owner_user_id, name, source
             FROM flashcard_sets
             WHERE id = $id;
             """);
@@ -993,8 +1065,9 @@ public class SqliteFlashcardStore
         {
             Id = Guid.Parse(reader.GetString(0)),
             ExternalId = reader.GetString(1),
-            Name = reader.GetString(2),
-            Source = Enum.Parse<FlashcardSetSource>(reader.GetString(3)),
+            OwnerUserId = ReadNullableString(reader, "owner_user_id"),
+            Name = reader.GetString(3),
+            Source = Enum.Parse<FlashcardSetSource>(reader.GetString(4)),
             Flashcards = new List<Flashcard>()
         };
         reader.Close();
@@ -1028,12 +1101,25 @@ public class SqliteFlashcardStore
         Guid cardId)
     {
         using var command = CreateCommand(connection, transaction, """
-            SELECT id, front, back, ease_factor, repetitions, interval_days, next_review_utc,
-                   learning_stage, review_again_streak, is_learned, last_reviewed_at
-            FROM flashcards
-            WHERE set_id = $setId
-              AND id = $cardId;
+            SELECT c.id,
+                   c.front,
+                   c.back,
+                   COALESCE(p.ease_factor, 2.5) AS ease_factor,
+                   COALESCE(p.repetitions, 0) AS repetitions,
+                   COALESCE(p.interval_days, 0) AS interval_days,
+                   p.next_review_at AS next_review_utc,
+                   COALESCE(p.learning_stage, 0) AS learning_stage,
+                   COALESCE(p.review_again_streak, 0) AS review_again_streak,
+                   COALESCE(p.is_learned, 0) AS is_learned,
+                   p.last_reviewed_at AS last_reviewed_at
+            FROM flashcards c
+            LEFT JOIN user_card_progress p
+              ON p.card_id = c.id
+             AND p.user_id = $userId
+            WHERE c.set_id = $setId
+              AND c.id = $cardId;
             """);
+        command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
         command.Parameters.AddWithValue("$setId", setId.ToString("D"));
         command.Parameters.AddWithValue("$cardId", cardId.ToString("D"));
 
@@ -1068,12 +1154,25 @@ public class SqliteFlashcardStore
         Guid setId)
     {
         using var command = CreateCommand(connection, transaction, """
-            SELECT id, front, back, ease_factor, repetitions, interval_days, next_review_utc,
-                   learning_stage, review_again_streak, is_learned, last_reviewed_at
-            FROM flashcards
-            WHERE set_id = $setId
-            ORDER BY sort_order;
+            SELECT c.id,
+                   c.front,
+                   c.back,
+                   COALESCE(p.ease_factor, 2.5) AS ease_factor,
+                   COALESCE(p.repetitions, 0) AS repetitions,
+                   COALESCE(p.interval_days, 0) AS interval_days,
+                   p.next_review_at AS next_review_utc,
+                   COALESCE(p.learning_stage, 0) AS learning_stage,
+                   COALESCE(p.review_again_streak, 0) AS review_again_streak,
+                   COALESCE(p.is_learned, 0) AS is_learned,
+                   p.last_reviewed_at AS last_reviewed_at
+            FROM flashcards c
+            LEFT JOIN user_card_progress p
+              ON p.card_id = c.id
+             AND p.user_id = $userId
+            WHERE c.set_id = $setId
+            ORDER BY c.sort_order;
             """);
+        command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
         command.Parameters.AddWithValue("$setId", setId.ToString("D"));
 
         var cards = new List<Flashcard>();
@@ -1147,16 +1246,18 @@ public class SqliteFlashcardStore
         int sortOrder)
     {
         using var command = CreateCommand(connection, transaction, """
-            INSERT INTO flashcard_sets(id, external_id, name, source, sort_order)
-            VALUES($id, $externalId, $name, $source, $sortOrder)
+            INSERT INTO flashcard_sets(id, external_id, owner_user_id, name, source, sort_order)
+            VALUES($id, $externalId, $ownerUserId, $name, $source, $sortOrder)
             ON CONFLICT(id) DO UPDATE SET
                 external_id = excluded.external_id,
+                owner_user_id = excluded.owner_user_id,
                 name = excluded.name,
                 source = excluded.source,
                 sort_order = excluded.sort_order;
             """);
         command.Parameters.AddWithValue("$id", set.Id.ToString("D"));
         command.Parameters.AddWithValue("$externalId", set.ExternalId);
+        AddNullable(command, "$ownerUserId", set.OwnerUserId);
         command.Parameters.AddWithValue("$name", set.Name);
         command.Parameters.AddWithValue("$source", set.Source.ToString());
         command.Parameters.AddWithValue("$sortOrder", sortOrder);
@@ -1217,6 +1318,129 @@ public class SqliteFlashcardStore
         AddNullable(command, "$lastReviewedAt", FormatDateTime(card.LastReviewedAt));
         command.Parameters.AddWithValue("$sortOrder", sortOrder);
         command.ExecuteNonQuery();
+
+        if (!preserveExistingProgress)
+            UpsertUserCardProgress(connection, transaction, DefaultLocalUserId, card);
+    }
+
+    private static void UpsertUserCardProgress(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string userId,
+        Flashcard card)
+    {
+        UpsertUserCardProgress(
+            connection,
+            transaction,
+            userId,
+            card.Id,
+            card.LearningStage,
+            card.IsLearned,
+            card.ReviewAgainStreak,
+            card.LastReviewedAt,
+            card.EaseFactor,
+            card.Repetitions,
+            card.IntervalDays,
+            card.NextReviewUtc);
+    }
+
+    private static void UpsertUserCardProgress(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string userId,
+        Guid cardId,
+        int learningStage,
+        bool isLearned,
+        int reviewAgainStreak,
+        DateTime? lastReviewedAt,
+        double? easeFactor = null,
+        int? repetitions = null,
+        int? intervalDays = null,
+        DateTime? nextReviewAt = null)
+    {
+        var now = FormatDateTime(DateTime.UtcNow)!;
+
+        using var command = CreateCommand(connection, transaction, """
+            INSERT INTO user_card_progress(
+                user_id, card_id, learning_stage, is_learned, review_again_streak,
+                last_reviewed_at, ease_factor, repetitions, interval_days, next_review_at,
+                created_at, updated_at)
+            VALUES(
+                $userId, $cardId, $learningStage, $isLearned, $reviewAgainStreak,
+                $lastReviewedAt,
+                COALESCE($easeFactor, (SELECT ease_factor FROM user_card_progress WHERE user_id = $userId AND card_id = $cardId), 2.5),
+                COALESCE($repetitions, (SELECT repetitions FROM user_card_progress WHERE user_id = $userId AND card_id = $cardId), 0),
+                COALESCE($intervalDays, (SELECT interval_days FROM user_card_progress WHERE user_id = $userId AND card_id = $cardId), 0),
+                COALESCE($nextReviewAt, (SELECT next_review_at FROM user_card_progress WHERE user_id = $userId AND card_id = $cardId)),
+                $now,
+                $now)
+            ON CONFLICT(user_id, card_id) DO UPDATE SET
+                learning_stage = excluded.learning_stage,
+                is_learned = excluded.is_learned,
+                review_again_streak = excluded.review_again_streak,
+                last_reviewed_at = excluded.last_reviewed_at,
+                ease_factor = excluded.ease_factor,
+                repetitions = excluded.repetitions,
+                interval_days = excluded.interval_days,
+                next_review_at = excluded.next_review_at,
+                updated_at = excluded.updated_at;
+            """);
+        command.Parameters.AddWithValue("$userId", userId);
+        command.Parameters.AddWithValue("$cardId", cardId.ToString("D"));
+        command.Parameters.AddWithValue("$learningStage", learningStage);
+        command.Parameters.AddWithValue("$isLearned", isLearned ? 1 : 0);
+        command.Parameters.AddWithValue("$reviewAgainStreak", reviewAgainStreak);
+        AddNullable(command, "$lastReviewedAt", FormatDateTime(lastReviewedAt));
+        command.Parameters.AddWithValue("$easeFactor", easeFactor ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$repetitions", repetitions ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("$intervalDays", intervalDays ?? (object)DBNull.Value);
+        AddNullable(command, "$nextReviewAt", FormatDateTime(nextReviewAt));
+        command.Parameters.AddWithValue("$now", now);
+        command.ExecuteNonQuery();
+    }
+
+    private static void UpsertResetUserProgressRows(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        Guid setId)
+    {
+        var now = FormatDateTime(DateTime.UtcNow)!;
+
+        ExecuteNonQuery(connection, transaction, """
+            INSERT INTO user_card_progress(
+                user_id, card_id, learning_stage, is_learned, review_again_streak,
+                last_reviewed_at, ease_factor, repetitions, interval_days, next_review_at,
+                created_at, updated_at)
+            SELECT $userId,
+                   id,
+                   0,
+                   0,
+                   0,
+                   NULL,
+                   2.5,
+                   0,
+                   0,
+                   NULL,
+                   $now,
+                   $now
+            FROM flashcards
+            WHERE set_id = $setId
+            ON CONFLICT(user_id, card_id) DO UPDATE SET
+                learning_stage = 0,
+                is_learned = 0,
+                review_again_streak = 0,
+                last_reviewed_at = NULL,
+                ease_factor = 2.5,
+                repetitions = 0,
+                interval_days = 0,
+                next_review_at = NULL,
+                updated_at = excluded.updated_at;
+            """, command =>
+        {
+            command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
+            command.Parameters.AddWithValue("$setId", setId.ToString("D"));
+            command.Parameters.AddWithValue("$now", now);
+        });
     }
 
     private static void DeleteSet(
@@ -1297,6 +1521,57 @@ public class SqliteFlashcardStore
         }
     }
 
+    private static void EnsureFlashcardSetOwnerUserIds(SqliteConnection connection)
+    {
+        ExecuteNonQuery(connection, null, """
+            UPDATE flashcard_sets
+            SET owner_user_id = $userId
+            WHERE source = $source
+              AND (owner_user_id IS NULL OR trim(owner_user_id) = '');
+            """, command =>
+        {
+            command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
+            command.Parameters.AddWithValue("$source", FlashcardSetSource.User.ToString());
+        });
+
+        ExecuteNonQuery(connection, null, """
+            UPDATE flashcard_sets
+            SET owner_user_id = NULL
+            WHERE source = $source;
+            """, command => command.Parameters.AddWithValue("$source", FlashcardSetSource.ReadyMade.ToString()));
+    }
+
+    private static void MigrateLegacyFlashcardProgress(SqliteConnection connection)
+    {
+        var now = FormatDateTime(DateTime.UtcNow)!;
+
+        ExecuteNonQuery(connection, null, """
+            INSERT INTO user_card_progress(
+                user_id, card_id, learning_stage, is_learned, review_again_streak,
+                last_reviewed_at, ease_factor, repetitions, interval_days, next_review_at,
+                created_at, updated_at)
+            SELECT $userId,
+                   id,
+                   learning_stage,
+                   is_learned,
+                   review_again_streak,
+                   last_reviewed_at,
+                   ease_factor,
+                   repetitions,
+                   interval_days,
+                   next_review_utc,
+                   $now,
+                   $now
+            FROM flashcards
+            WHERE 1 = 1
+            ON CONFLICT(user_id, card_id) DO NOTHING;
+            """, command =>
+        {
+            command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
+            command.Parameters.AddWithValue("$now", now);
+        });
+    }
+
     private static bool HasDuplicateExternalIds(SqliteConnection connection)
     {
         using var command = CreateCommand(connection, null, """
@@ -1320,6 +1595,13 @@ public class SqliteFlashcardStore
         set.ExternalId = set.Source == FlashcardSetSource.ReadyMade
             ? CreateReadyMadeExternalId(sortOrder, set.Name)
             : set.Id.ToString("D");
+    }
+
+    private static void EnsureOwnerUserId(FlashcardSet set)
+    {
+        set.OwnerUserId = set.Source == FlashcardSetSource.User
+            ? string.IsNullOrWhiteSpace(set.OwnerUserId) ? DefaultLocalUserId : set.OwnerUserId
+            : null;
     }
 
     private static string CreateReadyMadeExternalId(int sortOrder, string name)
@@ -1358,38 +1640,70 @@ public class SqliteFlashcardStore
 
     private static SetProgressSummary LoadSetProgressSummary(
         SqliteConnection connection,
-        SqliteTransaction transaction,
+        SqliteTransaction? transaction,
         Guid setId)
     {
         using var command = CreateCommand(connection, transaction, """
             SELECT s.id,
                    s.external_id,
-                   COUNT(c.id) AS total_cards,
-                   SUM(CASE WHEN c.is_learned = 1 THEN 1 ELSE 0 END) AS learned_cards,
-                   SUM(CASE WHEN c.is_learned = 0 AND c.learning_stage = -1 THEN 1 ELSE 0 END) AS difficult_cards
+                   COUNT(c.id) AS card_count,
+                   SUM(
+                       CASE
+                           WHEN c.id IS NOT NULL
+                            AND COALESCE(p.is_learned, 0) = 0
+                            AND COALESCE(p.learning_stage, 0) = 0 THEN 1
+                           ELSE 0
+                       END) AS new_count,
+                   SUM(
+                       CASE
+                           WHEN c.id IS NOT NULL
+                            AND COALESCE(p.learning_stage, 0) IN (1, 2) THEN 1
+                           ELSE 0
+                       END) AS learning_count,
+                   SUM(
+                       CASE
+                           WHEN c.id IS NOT NULL
+                            AND (COALESCE(p.is_learned, 0) = 1
+                             OR COALESCE(p.learning_stage, 0) >= 3) THEN 1
+                           ELSE 0
+                       END) AS learned_count,
+                   SUM(
+                       CASE
+                           WHEN c.id IS NOT NULL
+                            AND COALESCE(p.learning_stage, 0) = -1 THEN 1
+                           ELSE 0
+                       END) AS difficult_count
             FROM flashcard_sets s
             LEFT JOIN flashcards c ON c.set_id = s.id
+            LEFT JOIN user_card_progress p
+              ON p.card_id = c.id
+             AND p.user_id = $userId
             WHERE s.id = $setId
             GROUP BY s.id, s.external_id;
             """);
+        command.Parameters.AddWithValue("$userId", DefaultLocalUserId);
         command.Parameters.AddWithValue("$setId", setId.ToString("D"));
 
         using var reader = command.ExecuteReader();
         if (!reader.Read())
-            return new SetProgressSummary { SetId = setId };
+            return new SetProgressSummary
+            {
+                SetId = setId,
+                UserId = DefaultLocalUserId
+            };
 
-        var totalCards = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("total_cards")), CultureInfo.InvariantCulture);
-        var learnedCards = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("learned_cards")), CultureInfo.InvariantCulture);
-        var difficultCards = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("difficult_cards")), CultureInfo.InvariantCulture);
+        var cardCount = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("card_count")), CultureInfo.InvariantCulture);
 
         return new SetProgressSummary
         {
             SetId = Guid.Parse(reader.GetString(reader.GetOrdinal("id"))),
             ExternalId = reader.GetString(reader.GetOrdinal("external_id")),
-            TotalCards = totalCards,
-            LearnedCards = learnedCards,
-            DifficultCards = difficultCards,
-            LearningCards = Math.Max(totalCards - learnedCards - difficultCards, 0)
+            UserId = DefaultLocalUserId,
+            CardCount = cardCount,
+            NewCount = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("new_count")), CultureInfo.InvariantCulture),
+            LearningCount = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("learning_count")), CultureInfo.InvariantCulture),
+            LearnedCount = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("learned_count")), CultureInfo.InvariantCulture),
+            DifficultCount = Convert.ToInt32(reader.GetValue(reader.GetOrdinal("difficult_count")), CultureInfo.InvariantCulture)
         };
     }
 

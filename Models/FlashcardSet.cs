@@ -6,6 +6,8 @@ public class FlashcardSet
 
     public string ExternalId { get; set; } = string.Empty;
 
+    public string? OwnerUserId { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public FlashcardSetSource Source { get; set; } = FlashcardSetSource.User;

@@ -21,6 +21,25 @@ The API uses the repository root as the data root by default. To point it at a
 different existing data directory, set `SIMPLE_FLASHCARDS_DATA_ROOT` to the
 directory that contains the `Data` folder.
 
+## User-scoped progress
+
+Card content still lives in `flashcards`, but learning progress is now stored in
+`user_card_progress` for a placeholder local user:
+
+```text
+local-user
+```
+
+There is no login, profile, session, Supabase, or cloud sync yet. The frontend
+should not pass a `userId`; the API uses `local-user` automatically until real
+authentication exists.
+
+Ready-made set content is shared, but ready-made progress is per-user. Custom
+sets created through the API are owned by `local-user` through
+`flashcard_sets.owner_user_id`; ready-made sets have no owner. Legacy progress
+columns still exist on `flashcards` for console/test compatibility and are kept
+synchronized for the default local user.
+
 ## Start the Vite web app
 
 From the repository root:
@@ -45,7 +64,7 @@ $base = "http://localhost:5057"
 $externalSetId = "<external-id-from-get-sets>"
 $cardId1 = "<card-id-from-get-set>"
 $cardId2 = "<another-card-id-from-get-set>"
-$date = "2026-05-25"
+$date = "2026-05-26"
 ```
 
 Read app state:
@@ -100,6 +119,12 @@ Delete lesson snapshot:
 
 ```powershell
 curl.exe -X DELETE "$base/api/lesson-snapshot"
+```
+
+Read set progress for the default local user:
+
+```powershell
+curl.exe "$base/api/sets/$externalSetId/progress"
 ```
 
 Create a custom set:
@@ -182,6 +207,10 @@ Expected response: HTTP 403 with the title `Ready-made sets are read-only.`
   `default-{index}-{lowercase-name-with-dashes}`.
 - User-created sets use their internal GUID string as `external_id`. This keeps
   local API-created custom sets stable without adding another ID generator.
+- Set list and detail responses include `progressSummary` for `local-user`.
+- Set detail card responses include user-scoped progress fields:
+  `learningStage`, `isLearned`, `reviewAgainStreak`, `lastReviewedAt`,
+  `easeFactor`, `repetitions`, `intervalDays`, and `nextReviewAt`.
 - Existing localStorage user sets are still not imported into SQLite; a later web
   connection step needs a migration/import plan for browser-local custom sets.
 - Authentication, cloud sync, Supabase, user profiles, and learning-rule changes
