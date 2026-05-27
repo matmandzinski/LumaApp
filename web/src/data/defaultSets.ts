@@ -1,6 +1,7 @@
 import defaultSetsJson from "../../../Data/default_sets.json";
 
 export type Flashcard = {
+  id?: string;
   front: string;
   back: string;
   learningStage: number;
@@ -11,12 +12,25 @@ export type Flashcard = {
 
 export type FlashcardSetSource = "User" | "ReadyMade";
 
+export type SetProgressSummary = {
+  cardCount: number;
+  newCount: number;
+  learningCount: number;
+  learnedCount: number;
+  difficultCount: number;
+};
+
 export type FlashcardSet = {
   id: string;
+  internalId?: string;
+  ownerUserId?: string | null;
   name: string;
   source: FlashcardSetSource;
   flashcards: Flashcard[];
   readonly: boolean;
+  cardCount?: number;
+  progressSummary?: SetProgressSummary;
+  isApiBacked?: boolean;
 };
 
 type DefaultFlashcardJson = {

@@ -1,11 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { AppChrome } from "./components/AppChrome";
-import { defaultSets, type Flashcard, type FlashcardSet } from "./data/defaultSets";
+import {
+  defaultSets,
+  type Flashcard,
+  type FlashcardSet,
+  type FlashcardSetSource,
+  type SetProgressSummary,
+} from "./data/defaultSets";
 import { HomeScreen } from "./screens/HomeScreen";
 import { LearningScreen } from "./screens/LearningScreen";
 import { QuickLessonCompletedScreen } from "./screens/QuickLessonCompletedScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { SetDetailsScreen, ReadyMadeSetsScreen, SetsScreen } from "./screens/SetsScreen";
+import {
+  addCard as addApiCard,
+  createSet as createApiSet,
+  deleteCard as deleteApiCard,
+  deleteSet as deleteApiSet,
+  AppApiError,
+  getAppState,
+  getSet,
+  getSets,
+  renameSet as renameApiSet,
+  resetSetProgress as resetApiSetProgress,
+  saveActiveSet,
+  updateCard as updateApiCard,
+  type ApiFlashcard,
+  type ApiProgressSummary,
+  type ApiSetDetail,
+  type ApiSetListItem,
+} from "./services/appApi";
 import { StatsScreen } from "./screens/StatsScreen";
 import type { AppViewId, TabId } from "./theme/tokens";
 
@@ -24,6 +48,10 @@ const USER_SETS_STORAGE_KEY = "simple-flashcards:user-sets";
 const LEARNING_PROGRESS_STORAGE_KEY = "simple-flashcards:learning-progress";
 const STUDY_PROGRESS_STORAGE_KEY = "simple-flashcards:study-progress";
 const DUPLICATE_SET_NAME_ERROR = "A set with this name already exists.";
+const API_UNAVAILABLE_ERROR =
+  "The local API is unavailable. Start SimpleFlashCards.Api and try again.";
+const LEGACY_LOCAL_SET_ERROR =
+  "This local-only set needs to be imported before it can be edited.";
 
 type LearningSessionItem = {
   card: Flashcard;
@@ -46,6 +74,7 @@ type StudyProgress = {
 };
 
 type FlashcardDraft = Pick<Flashcard, "front" | "back"> & {
+  id?: unknown;
   learningStage?: unknown;
   reviewAgainStreak?: unknown;
   isLearned?: unknown;
@@ -225,6 +254,7 @@ function normalizeFlashcard(card: FlashcardDraft): Flashcard {
   const isLearned = Boolean(card.isLearned) || learningStage >= 3;
 
   return {
+    ...(typeof card.id === "string" ? { id: card.id } : {}),
     front: card.front,
     back: card.back,
     learningStage: isLearned && learningStage < 3 ? 3 : learningStage,
@@ -234,12 +264,45 @@ function normalizeFlashcard(card: FlashcardDraft): Flashcard {
   };
 }
 
+function getSetCardCount(set: FlashcardSet) {
+  return set.progressSummary?.cardCount ?? set.cardCount ?? set.flashcards.length;
+}
+
+function createProgressSummaryFromCards(cards: Flashcard[]): SetProgressSummary {
+  const learnedCount = cards.filter((card) => card.isLearned || card.learningStage >= 3).length;
+  const difficultCount = cards.filter((card) => !card.isLearned && card.learningStage === -1).length;
+  const learningCount = cards.filter((card) => !card.isLearned && card.learningStage > 0 && card.learningStage < 3).length;
+  const newCount = cards.filter((card) => !card.isLearned && card.learningStage === 0).length;
+
+  return {
+    cardCount: cards.length,
+    newCount,
+    learningCount,
+    learnedCount,
+    difficultCount,
+  };
+}
+
 function getLearningCounts(set: FlashcardSet) {
-  const totalCards = set.flashcards.length;
-  const learnedCards = set.flashcards.filter((card) => card.isLearned).length;
-  const difficultCards = set.flashcards.filter(
-    (card) => !card.isLearned && card.learningStage === -1,
-  ).length;
+  if (set.flashcards.length === 0 && set.progressSummary) {
+    const totalCards = set.progressSummary.cardCount;
+    const learnedCards = set.progressSummary.learnedCount;
+    const difficultCards = set.progressSummary.difficultCount;
+    const learningCards = Math.max(totalCards - learnedCards - difficultCards, 0);
+    const readyCards = Math.max(totalCards - learnedCards, 0);
+
+    return {
+      totalCards,
+      learnedCards,
+      learningCards,
+      difficultCards,
+      readyCards,
+    };
+  }
+
+  const totalCards = getSetCardCount(set);
+  const learnedCards = set.flashcards.filter((card) => card.isLearned || card.learningStage >= 3).length;
+  const difficultCards = set.flashcards.filter((card) => !card.isLearned && card.learningStage === -1).length;
   const learningCards = Math.max(totalCards - learnedCards - difficultCards, 0);
   const readyCards = Math.max(totalCards - learnedCards, 0);
 
@@ -253,11 +316,7 @@ function getLearningCounts(set: FlashcardSet) {
 }
 
 function getLearningStatusSummary(set: FlashcardSet) {
-  const learnedCards = set.flashcards.filter((card) => card.isLearned).length;
-  const difficultCards = set.flashcards.filter(
-    (card) => !card.isLearned && card.learningStage === -1,
-  ).length;
-  const learningCards = Math.max(set.flashcards.length - learnedCards - difficultCards, 0);
+  const { learnedCards, difficultCards, learningCards } = getLearningCounts(set);
 
   return [
     { label: "Difficult", value: difficultCards, tone: "difficult" as const },
@@ -322,15 +381,151 @@ function saveStudyProgress(progress: StudyProgress) {
 }
 
 function applyReadyMadeProgress(sets: FlashcardSet[], progress: LearningProgressStore) {
-  return sets.map((set) => ({
-    ...set,
-    flashcards: set.flashcards.map((card, index) =>
+  return sets.map((set) => {
+    if (set.source !== "ReadyMade") {
+      return set;
+    }
+
+    const flashcards = set.flashcards.map((card, index) =>
       normalizeFlashcard({
         ...card,
         ...progress[getCardProgressKey(set.id, card, index)],
       }),
-    ),
-  }));
+    );
+
+    return {
+      ...set,
+      flashcards,
+      progressSummary:
+        flashcards.length > 0 ? createProgressSummaryFromCards(flashcards) : set.progressSummary,
+    };
+  });
+}
+
+function mapApiProgressSummary(summary: ApiProgressSummary | undefined): SetProgressSummary | undefined {
+  if (!summary) return undefined;
+
+  return {
+    cardCount: summary.cardCount,
+    newCount: summary.newCount,
+    learningCount: summary.learningCount,
+    learnedCount: summary.learnedCount,
+    difficultCount: summary.difficultCount,
+  };
+}
+
+function normalizeApiSource(source: string): FlashcardSetSource {
+  return source === "User" ? "User" : "ReadyMade";
+}
+
+function mapApiFlashcard(card: ApiFlashcard): Flashcard {
+  return normalizeFlashcard({
+    id: card.id,
+    front: card.front,
+    back: card.back,
+    learningStage: card.learningStage,
+    reviewAgainStreak: card.reviewAgainStreak,
+    isLearned: card.isLearned,
+    lastReviewedAt: card.lastReviewedAt,
+  });
+}
+
+function mapApiSetSummary(set: ApiSetListItem): FlashcardSet {
+  const source = normalizeApiSource(set.source);
+
+  return {
+    id: set.externalId,
+    internalId: set.id,
+    ownerUserId: set.ownerUserId,
+    name: set.name,
+    source,
+    readonly: source === "ReadyMade",
+    flashcards: [],
+    cardCount: set.cardCount,
+    progressSummary: mapApiProgressSummary(set.progressSummary),
+    isApiBacked: true,
+  };
+}
+
+function mapApiSetDetail(set: ApiSetDetail): FlashcardSet {
+  const summary = mapApiSetSummary(set);
+  const flashcards = set.flashcards.map(mapApiFlashcard);
+
+  return {
+    ...summary,
+    flashcards,
+    cardCount: set.cardCount,
+    progressSummary: flashcards.length > 0
+      ? createProgressSummaryFromCards(flashcards)
+      : mapApiProgressSummary(set.progressSummary),
+  };
+}
+
+function upsertSet(sets: FlashcardSet[], updatedSet: FlashcardSet) {
+  const existingIndex = sets.findIndex((set) => set.id === updatedSet.id);
+  if (existingIndex === -1) return [updatedSet, ...sets];
+
+  return sets.map((set, index) => (index === existingIndex ? updatedSet : set));
+}
+
+function removeSet(sets: FlashcardSet[], setId: string) {
+  return sets.filter((set) => set.id !== setId);
+}
+
+function withUpdatedCard(set: FlashcardSet, updatedCard: Flashcard) {
+  const flashcards = set.flashcards.map((card) => (card.id === updatedCard.id ? updatedCard : card));
+
+  return {
+    ...set,
+    flashcards,
+    cardCount: flashcards.length,
+    progressSummary: createProgressSummaryFromCards(flashcards),
+  };
+}
+
+function withoutCard(set: FlashcardSet, cardId: string) {
+  const flashcards = set.flashcards.filter((card) => card.id !== cardId);
+
+  return {
+    ...set,
+    flashcards,
+    cardCount: flashcards.length,
+    progressSummary: createProgressSummaryFromCards(flashcards),
+  };
+}
+
+function withPrependedCard(set: FlashcardSet, card: Flashcard) {
+  const flashcards = [card, ...set.flashcards];
+
+  return {
+    ...set,
+    flashcards,
+    cardCount: flashcards.length,
+    progressSummary: createProgressSummaryFromCards(flashcards),
+  };
+}
+
+function isEditableApiUserSet(set: FlashcardSet) {
+  return set.isApiBacked === true && set.source === "User" && !set.readonly;
+}
+
+function getSetMutationBlockedMessage(set: FlashcardSet) {
+  if (set.source !== "User") return "This set is read-only.";
+  if (!set.isApiBacked) return LEGACY_LOCAL_SET_ERROR;
+
+  return "This set is read-only.";
+}
+
+function getApiActionErrorMessage(error: unknown, fallbackMessage: string) {
+  if (error instanceof AppApiError) {
+    if (error.status === undefined) return API_UNAVAILABLE_ERROR;
+    if (error.status === 403) return "This set is read-only.";
+    if (error.status === 404) return "That set or card no longer exists. Refresh and try again.";
+
+    return error.message;
+  }
+
+  return fallbackMessage;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -343,6 +538,7 @@ function toStoredFlashcard(value: unknown): Flashcard | null {
   }
 
   return normalizeFlashcard({
+    id: value.id,
     front: value.front,
     back: value.back,
     learningStage: value.learningStage,
@@ -370,7 +566,7 @@ function loadUserSets() {
           id: set.id,
           name: set.name,
           source: "User",
-          readonly: false,
+          readonly: true,
           flashcards: Array.isArray(set.flashcards)
             ? set.flashcards.flatMap((card) => {
                 const flashcard = toStoredFlashcard(card);
@@ -393,12 +589,16 @@ function saveUserSets(sets: FlashcardSet[]) {
   }
 }
 
-function createUserSetId() {
-  return `user-${crypto.randomUUID?.() ?? Date.now().toString(36)}`;
-}
+// TODO(api migration): Import existing simple-flashcards:user-sets records into SQLite.
+// TODO(api migration): Move learning progress writes to the local API.
+// TODO(api migration): Move quick lesson completion to the local API.
+// TODO(api migration): Move lesson snapshots to the local API.
+// TODO(api migration): Move streak/study progress to the local API.
+// TODO(api migration): Remove simple-flashcards:user-sets reads after import is implemented.
 
 export function App() {
   const [userSets, setUserSets] = useState<FlashcardSet[]>(loadUserSets);
+  const [apiSets, setApiSets] = useState<FlashcardSet[] | null>(null);
   const [learningProgress, setLearningProgress] = useState<LearningProgressStore>(
     loadLearningProgress,
   );
@@ -416,11 +616,22 @@ export function App() {
   const [learningSessionCardTotal, setLearningSessionCardTotal] = useState(0);
   const [learningQueue, setLearningQueue] = useState<LearningSessionItem[]>([]);
 
-  const readyMadeSets = useMemo(
+  const localReadyMadeSets = useMemo(
     () => applyReadyMadeProgress(defaultSets, learningProgress),
     [learningProgress],
   );
-  const allSets = useMemo(() => [...userSets, ...readyMadeSets], [readyMadeSets, userSets]);
+  const apiBackedSets = useMemo(
+    () => (apiSets ? applyReadyMadeProgress(apiSets, learningProgress) : null),
+    [apiSets, learningProgress],
+  );
+  const allSets = useMemo(() => {
+    if (!apiBackedSets) return [...userSets, ...localReadyMadeSets];
+
+    const apiSetIds = new Set(apiBackedSets.map((set) => set.id));
+    const localOnlyUserSets = userSets.filter((set) => !apiSetIds.has(set.id));
+
+    return [...localOnlyUserSets, ...apiBackedSets];
+  }, [apiBackedSets, localReadyMadeSets, userSets]);
   const selectedSet = allSets.find((set) => set.id === selectedSetId) ?? allSets[0];
   const viewedSet = allSets.find((set) => set.id === viewedSetId) ?? selectedSet;
   const activeSetCounts = getLearningCounts(selectedSet);
@@ -460,6 +671,61 @@ export function App() {
   );
 
   useEffect(() => {
+    let isCancelled = false;
+
+    async function loadApiSetsAndState() {
+      try {
+        const [setResponses, appState] = await Promise.all([
+          getSets(),
+          getAppState().catch((error: unknown) => {
+            console.warn("Unable to load local API app state; using API set fallback.", error);
+            return null;
+          }),
+        ]);
+
+        const summarySets = setResponses.map(mapApiSetSummary);
+        const persistedActiveSetId = appState?.activeSetExternalId ?? appState?.activeSetId;
+        const fallbackSet =
+          summarySets.find((set) => set.source === "ReadyMade") ?? summarySets[0] ?? null;
+        const activeSet =
+          (persistedActiveSetId
+            ? summarySets.find((set) => set.id === persistedActiveSetId)
+            : undefined) ?? fallbackSet;
+
+        let nextApiSets = summarySets;
+
+        if (activeSet) {
+          try {
+            const activeSetDetail = mapApiSetDetail(await getSet(activeSet.id));
+            nextApiSets = upsertSet(nextApiSets, activeSetDetail);
+          } catch (error) {
+            console.warn(`Unable to load cards for ${activeSet.name} from the local API.`, error);
+          }
+        }
+
+        if (isCancelled) return;
+
+        setApiSets(nextApiSets);
+
+        if (activeSet) {
+          setSelectedSetId(activeSet.id);
+          setViewedSetId(activeSet.id);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.warn("Local API unavailable; using local/default flashcard sets.", error);
+        }
+      }
+    }
+
+    void loadApiSetsAndState();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (
       homeRoute !== "quickLesson" ||
       quickLessonDecisionLimit === 0 ||
@@ -494,6 +760,42 @@ export function App() {
     setActiveTab("settings");
   }
 
+  async function hydrateApiSet(set: FlashcardSet) {
+    if (!set.isApiBacked) return;
+
+    try {
+      await refreshApiSet(set.id);
+    } catch (error) {
+      console.warn(`Unable to load cards for ${set.name} from the local API.`, error);
+    }
+  }
+
+  function hydrateApiSetIfNeeded(set: FlashcardSet) {
+    if (!set.isApiBacked || set.flashcards.length > 0 || getSetCardCount(set) === 0) return;
+
+    void hydrateApiSet(set);
+  }
+
+  async function refreshApiSet(externalSetId: string) {
+    const detail = mapApiSetDetail(await getSet(externalSetId));
+    setApiSets((currentSets) => (currentSets ? upsertSet(currentSets, detail) : [detail]));
+
+    return detail;
+  }
+
+  function clearStoredLearningProgressForSet(set: FlashcardSet) {
+    setLearningProgress((currentProgress) => {
+      const nextProgress = { ...currentProgress };
+
+      set.flashcards.forEach((card, index) => {
+        delete nextProgress[getCardProgressKey(set.id, card, index)];
+      });
+
+      saveLearningProgress(nextProgress);
+      return nextProgress;
+    });
+  }
+
   function updateUserSet(setId: string, updateSet: (set: FlashcardSet) => FlashcardSet) {
     setUserSets((currentSets) => {
       let updatedSet: FlashcardSet | null = null;
@@ -512,12 +814,34 @@ export function App() {
   }
 
   function addCardToSet(set: FlashcardSet, card: Pick<Flashcard, "front" | "back">) {
-    if (set.source !== "User") return;
+    if (!isEditableApiUserSet(set)) {
+      console.warn(getSetMutationBlockedMessage(set));
+      return;
+    }
 
-    updateUserSet(set.id, (currentSet) => ({
-      ...currentSet,
-      flashcards: [normalizeFlashcard(card), ...currentSet.flashcards],
-    }));
+    void addApiCard(set.id, {
+      front: card.front.trim(),
+      back: card.back.trim(),
+    })
+      .then((createdCard) => {
+        const flashcard = mapApiFlashcard(createdCard);
+
+        setApiSets((currentSets) =>
+          currentSets
+            ? currentSets.map((currentSet) =>
+                currentSet.id === set.id ? withPrependedCard(currentSet, flashcard) : currentSet,
+              )
+            : currentSets,
+        );
+
+        return refreshApiSet(set.id);
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          getApiActionErrorMessage(error, `Unable to add a card to ${set.name}.`),
+          error,
+        );
+      });
   }
 
   function updateCardInSet(
@@ -525,28 +849,80 @@ export function App() {
     cardIndex: number,
     card: Pick<Flashcard, "front" | "back">,
   ) {
-    if (set.source !== "User") return;
+    if (!isEditableApiUserSet(set)) {
+      console.warn(getSetMutationBlockedMessage(set));
+      return;
+    }
 
-    updateUserSet(set.id, (currentSet) => ({
-      ...currentSet,
-      flashcards: currentSet.flashcards.map((currentCard, index) =>
-        index === cardIndex ? normalizeFlashcard({ ...currentCard, ...card }) : currentCard,
-      ),
-    }));
+    const cardId = set.flashcards[cardIndex]?.id;
+    if (!cardId) {
+      console.warn(`Unable to update a card in ${set.name}: missing API card id.`);
+      return;
+    }
+
+    void updateApiCard(set.id, cardId, {
+      front: card.front.trim(),
+      back: card.back.trim(),
+    })
+      .then((updatedCard) => {
+        const flashcard = mapApiFlashcard(updatedCard);
+        setApiSets((currentSets) =>
+          currentSets
+            ? currentSets.map((currentSet) =>
+                currentSet.id === set.id ? withUpdatedCard(currentSet, flashcard) : currentSet,
+              )
+            : currentSets,
+        );
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          getApiActionErrorMessage(error, `Unable to update a card in ${set.name}.`),
+          error,
+        );
+      });
   }
 
   function deleteCardFromSet(set: FlashcardSet, cardIndex: number) {
-    if (set.source !== "User") return;
+    if (!isEditableApiUserSet(set)) {
+      console.warn(getSetMutationBlockedMessage(set));
+      return;
+    }
 
-    updateUserSet(set.id, (currentSet) => ({
-      ...currentSet,
-      flashcards: currentSet.flashcards.filter((_, index) => index !== cardIndex),
-    }));
+    const cardId = set.flashcards[cardIndex]?.id;
+    if (!cardId) {
+      console.warn(`Unable to delete a card from ${set.name}: missing API card id.`);
+      return;
+    }
+
+    void deleteApiCard(set.id, cardId)
+      .then(() => {
+        setApiSets((currentSets) =>
+          currentSets
+            ? currentSets.map((currentSet) =>
+                currentSet.id === set.id ? withoutCard(currentSet, cardId) : currentSet,
+              )
+            : currentSets,
+        );
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          getApiActionErrorMessage(error, `Unable to delete a card from ${set.name}.`),
+          error,
+        );
+      });
   }
 
   function selectSet(set: FlashcardSet) {
     setSelectedSetId(set.id);
     setViewedSetId(set.id);
+    hydrateApiSetIfNeeded(set);
+
+    if (set.isApiBacked) {
+      void saveActiveSet(set.id).catch((error: unknown) => {
+        console.warn(`Unable to save active set ${set.name} to the local API.`, error);
+      });
+    }
+
     setQuickLessonCompleted(false);
     setQuickLessonReviewedCount(0);
     setQuickLessonDecisionLimit(0);
@@ -557,11 +933,12 @@ export function App() {
   }
 
   function openSetDetails(set: FlashcardSet) {
+    hydrateApiSetIfNeeded(set);
     setViewedSetId(set.id);
     setSetsRoute("details");
   }
 
-  function createUserSet(name: string) {
+  async function createUserSet(name: string) {
     const setName = name.trim();
     const normalizedName = setName.toLocaleLowerCase();
     const hasDuplicateName = allSets.some(
@@ -572,40 +949,88 @@ export function App() {
       return DUPLICATE_SET_NAME_ERROR;
     }
 
-    const newSet: FlashcardSet = {
-      id: createUserSetId(),
-      name: setName,
-      source: "User",
-      readonly: false,
-      flashcards: [],
-    };
+    try {
+      const newSet = mapApiSetDetail(await createApiSet({ name: setName }));
+      const latestSets = (await getSets()).map(mapApiSetSummary);
+      setApiSets(upsertSet(latestSets, newSet));
 
-    setUserSets((currentSets) => {
-      const updatedSets = [newSet, ...currentSets];
-      saveUserSets(updatedSets);
-      return updatedSets;
-    });
+      return null;
+    } catch (error) {
+      const message = getApiActionErrorMessage(error, API_UNAVAILABLE_ERROR);
+      console.warn(message, error);
 
-    return null;
+      return message;
+    }
+  }
+
+  async function renameUserSet(setToRename: FlashcardSet, name: string) {
+    if (!isEditableApiUserSet(setToRename)) {
+      const message = getSetMutationBlockedMessage(setToRename);
+      console.warn(message);
+      return message;
+    }
+
+    const setName = name.trim();
+    const normalizedName = setName.toLocaleLowerCase();
+    const hasDuplicateName = allSets.some(
+      (set) =>
+        set.id !== setToRename.id &&
+        set.name.trim().toLocaleLowerCase() === normalizedName,
+    );
+
+    if (hasDuplicateName) {
+      return DUPLICATE_SET_NAME_ERROR;
+    }
+
+    try {
+      const updatedSet = mapApiSetDetail(await renameApiSet(setToRename.id, { name: setName }));
+      setApiSets((currentSets) => (currentSets ? upsertSet(currentSets, updatedSet) : [updatedSet]));
+
+      return null;
+    } catch (error) {
+      const message = getApiActionErrorMessage(error, `Unable to rename ${setToRename.name}.`);
+      console.warn(message, error);
+
+      return message;
+    }
   }
 
   function deleteUserSet(setToDelete: FlashcardSet) {
-    if (setToDelete.source !== "User") return;
-
-    setUserSets((currentSets) => {
-      const updatedSets = currentSets.filter((set) => set.id !== setToDelete.id);
-      saveUserSets(updatedSets);
-      return updatedSets;
-    });
-
-    if (selectedSetId === setToDelete.id) {
-      selectSet(readyMadeSets[0]);
+    if (!isEditableApiUserSet(setToDelete)) {
+      console.warn(getSetMutationBlockedMessage(setToDelete));
       return;
     }
 
-    if (viewedSetId === setToDelete.id) {
-      setViewedSetId(selectedSetId);
-    }
+    void deleteApiSet(setToDelete.id)
+      .then((response) => {
+        setApiSets((currentSets) =>
+          currentSets ? removeSet(currentSets, setToDelete.id) : currentSets,
+        );
+
+        const remainingSets = allSets.filter((set) => set.id !== setToDelete.id);
+        const fallbackSet =
+          (response.activeSetExternalId
+            ? remainingSets.find((set) => set.id === response.activeSetExternalId)
+            : undefined) ??
+          remainingSets.find((set) => set.source === "ReadyMade") ??
+          remainingSets[0];
+
+        if (selectedSetId === setToDelete.id && fallbackSet) {
+          selectSet(fallbackSet);
+          return;
+        }
+
+        if (viewedSetId === setToDelete.id) {
+          setViewedSetId(fallbackSet?.id ?? selectedSetId);
+          setSetsRoute("list");
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          getApiActionErrorMessage(error, `Unable to delete ${setToDelete.name}.`),
+          error,
+        );
+      });
   }
 
   function resetSetLearningState(setToReset: FlashcardSet) {
@@ -619,11 +1044,41 @@ export function App() {
       setLearningQueue([]);
     }
 
+    if (setToReset.isApiBacked) {
+      void resetApiSetProgress(setToReset.id)
+        .then((progressSummary) => {
+          setApiSets((currentSets) =>
+            currentSets
+              ? currentSets.map((set) =>
+                  set.id === setToReset.id
+                    ? {
+                        ...set,
+                        progressSummary: mapApiProgressSummary(progressSummary),
+                        flashcards: set.flashcards.map(resetFlashcardLearningState),
+                      }
+                    : set,
+                )
+              : currentSets,
+          );
+
+          return refreshApiSet(setToReset.id);
+        })
+        .then((refreshedSet) => {
+          if (refreshedSet.source === "ReadyMade") {
+            clearStoredLearningProgressForSet(refreshedSet);
+          }
+        })
+        .catch((error: unknown) => {
+          console.warn(
+            getApiActionErrorMessage(error, `Unable to reset progress for ${setToReset.name}.`),
+            error,
+          );
+        });
+      return;
+    }
+
     if (setToReset.source === "User") {
-      updateUserSet(setToReset.id, (currentSet) => ({
-        ...currentSet,
-        flashcards: currentSet.flashcards.map(resetFlashcardLearningState),
-      }));
+      console.warn(LEGACY_LOCAL_SET_ERROR);
       return;
     }
 
@@ -644,6 +1099,19 @@ export function App() {
   }
 
   function persistCardLearningState(set: FlashcardSet, item: LearningSessionItem) {
+    if (set.isApiBacked && set.source === "User") {
+      setApiSets((currentSets) =>
+        currentSets
+          ? currentSets.map((currentSet) =>
+              currentSet.id === set.id
+                ? withUpdatedCard(currentSet, normalizeFlashcard(item.card))
+                : currentSet,
+            )
+          : currentSets,
+      );
+      return;
+    }
+
     if (set.source === "User") {
       updateUserSet(set.id, (currentSet) => ({
         ...currentSet,
@@ -1008,7 +1476,10 @@ export function App() {
         onBrowseSets={() => openTab("sets")}
         onStartQuickLesson={startQuickLesson}
         onContinueLearning={startContinueLearning}
-        onOpenActiveSet={() => setHomeRoute("setDetails")}
+        onOpenActiveSet={() => {
+          hydrateApiSetIfNeeded(selectedSet);
+          setHomeRoute("setDetails");
+        }}
         onResetActiveSet={resetSelectedSetLearningState}
       />
     );
@@ -1038,6 +1509,7 @@ export function App() {
         onCreateSet={createUserSet}
         onDeleteSet={deleteUserSet}
         onOpenSetDetails={openSetDetails}
+        onRenameSet={renameUserSet}
         onResetSetProgress={resetSetLearningState}
         onSetActive={selectSet}
       />

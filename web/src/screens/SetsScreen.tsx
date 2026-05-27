@@ -6,9 +6,10 @@ import { AppButton, Card, Heading, MetaText } from "../components/ui";
 type SetsScreenProps = {
   sets: FlashcardSet[];
   activeSetId: string;
-  onCreateSet: (name: string) => string | null;
+  onCreateSet: (name: string) => Promise<string | null>;
   onDeleteSet: (set: FlashcardSet) => void;
   onOpenSetDetails: (set: FlashcardSet) => void;
+  onRenameSet: (set: FlashcardSet, name: string) => Promise<string | null>;
   onResetSetProgress: (set: FlashcardSet) => void;
   onSetActive: (set: FlashcardSet) => void;
 };
@@ -19,12 +20,14 @@ export function SetsScreen({
   onCreateSet,
   onDeleteSet,
   onOpenSetDetails,
+  onRenameSet,
   onResetSetProgress,
   onSetActive,
 }: SetsScreenProps) {
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const [openOptionsSetId, setOpenOptionsSetId] = useState<string | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<FlashcardSet | null>(null);
+  const [renameCandidate, setRenameCandidate] = useState<FlashcardSet | null>(null);
   const { customSets, readyMadeSets } = getSetGroups(sets);
   const totalSetCount = sets.length;
 
@@ -87,10 +90,22 @@ export function SetsScreen({
               isOptionsOpen={set.id === openOptionsSetId}
               practiceLabel={getPracticeLabel(index)}
               showMenuHint
-              onDeleteRequest={() => {
-                setOpenOptionsSetId(null);
-                setDeleteCandidate(set);
-              }}
+              onRenameRequest={
+                isEditableCustomSet(set)
+                  ? () => {
+                      setOpenOptionsSetId(null);
+                      setRenameCandidate(set);
+                    }
+                  : undefined
+              }
+              onDeleteRequest={
+                isEditableCustomSet(set)
+                  ? () => {
+                      setOpenOptionsSetId(null);
+                      setDeleteCandidate(set);
+                    }
+                  : undefined
+              }
               onClick={() => onOpenSetDetails(set)}
               onSetActive={() => {
                 onSetActive(set);
@@ -156,6 +171,14 @@ export function SetsScreen({
           }}
         />
       ) : null}
+
+      {renameCandidate ? (
+        <RenameSetDialog
+          set={renameCandidate}
+          onCancel={() => setRenameCandidate(null)}
+          onRename={onRenameSet}
+        />
+      ) : null}
     </div>
   );
 }
@@ -184,6 +207,8 @@ export function SetDetailsScreen({
     { mode: "add" } | { mode: "edit"; cardIndex: number } | null
   >(null);
   const isReadOnly = set.readonly || set.source === "ReadyMade";
+  const totalCards = getSetCardCount(set);
+  const isLoadingApiCards = set.isApiBacked && totalCards > 0 && set.flashcards.length === 0;
   const editedCard =
     cardEditorState?.mode === "edit" ? set.flashcards[cardEditorState.cardIndex] : null;
 
@@ -264,9 +289,9 @@ export function SetDetailsScreen({
         </div>
 
         <div className="set-summary-stats" aria-label={`${set.name} summary`}>
-          <SetSummaryStat value={set.flashcards.length.toString()} label="Cards" />
+          <SetSummaryStat value={totalCards.toString()} label="Cards" />
           <SetSummaryStat value={getLastPracticedLabel(set.id)} label="Practiced" />
-          <SetSummaryStat value={getWaitingCount(set.flashcards.length).toString()} label="Waiting" />
+          <SetSummaryStat value={getWaitingCount(totalCards).toString()} label="Waiting" />
         </div>
       </section>
 
@@ -275,7 +300,7 @@ export function SetDetailsScreen({
           <h2 className="set-cards-label" id="set-cards-heading">
             Cards
           </h2>
-          <span className="set-cards-count">{set.flashcards.length} cards</span>
+          <span className="set-cards-count">{totalCards} cards</span>
         </div>
 
         <div className="set-card-list">
@@ -309,7 +334,14 @@ export function SetDetailsScreen({
             </button>
           ))}
 
-          {set.flashcards.length === 0 ? (
+          {isLoadingApiCards ? (
+            <article className="set-detail-empty-card">
+              <p>Loading cards</p>
+              <span>Getting this set ready.</span>
+            </article>
+          ) : null}
+
+          {totalCards === 0 ? (
             <article className="set-detail-empty-card">
               <p>No cards yet</p>
               <span>Add the first front and back pair when you're ready.</span>
@@ -504,6 +536,7 @@ type CollectionCardProps = {
   onClick: () => void;
   onDeleteRequest?: () => void;
   onResetProgress?: () => void;
+  onRenameRequest?: () => void;
   onSetActive?: () => void;
   onToggleOptions?: () => void;
 };
@@ -517,11 +550,12 @@ function CollectionCard({
   onClick,
   onDeleteRequest,
   onResetProgress,
+  onRenameRequest,
   onSetActive,
   onToggleOptions,
 }: CollectionCardProps) {
   const learnedCards = getLearnedCardCount(set);
-  const totalCards = set.flashcards.length;
+  const totalCards = getSetCardCount(set);
   const progressPercent = totalCards > 0 ? (learnedCards / totalCards) * 100 : 0;
   const progressLabel = `${learnedCards} / ${totalCards} learned`;
 
@@ -543,7 +577,7 @@ function CollectionCard({
               ) : null}
             </div>
             <p className="sets-card-meta">
-              {set.flashcards.length} cards - {practiceLabel}
+              {totalCards} cards - {practiceLabel}
             </p>
           </div>
 
@@ -606,6 +640,16 @@ function CollectionCard({
           >
             Reset set progress
           </button>
+          {onRenameRequest ? (
+            <button
+              type="button"
+              className="set-options-row"
+              role="menuitem"
+              onClick={onRenameRequest}
+            >
+              Rename set
+            </button>
+          ) : null}
           {onDeleteRequest ? (
             <button
               type="button"
@@ -713,19 +757,20 @@ function DeleteSetDialog({ onCancel, onConfirm, setName }: DeleteSetDialogProps)
 
 type CreateSetSheetProps = {
   onClose: () => void;
-  onCreateSet: (name: string) => string | null;
+  onCreateSet: (name: string) => Promise<string | null>;
 };
 
 function CreateSetSheet({ onClose, onCreateSet }: CreateSetSheetProps) {
   const [setName, setSetName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const helperId = useId();
   const errorId = useId();
   const trimmedSetName = setName.trim();
-  const canSubmit = trimmedSetName.length > 0;
+  const canSubmit = trimmedSetName.length > 0 && !isSubmitting;
   const describedBy = error ? `${descriptionId} ${helperId} ${errorId}` : `${descriptionId} ${helperId}`;
 
   useEffect(() => {
@@ -743,12 +788,15 @@ function CreateSetSheet({ onClose, onCreateSet }: CreateSetSheetProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!canSubmit) return;
 
-    const createError = onCreateSet(trimmedSetName);
+    setIsSubmitting(true);
+    const createError = await onCreateSet(trimmedSetName);
+    setIsSubmitting(false);
+
     if (createError) {
       setError(createError);
       return;
@@ -820,7 +868,129 @@ function CreateSetSheet({ onClose, onCreateSet }: CreateSetSheetProps) {
         ) : null}
 
         <button type="submit" className="create-set-submit" disabled={!canSubmit}>
-          Create set
+          {isSubmitting ? "Creating" : "Create set"}
+        </button>
+      </form>
+    </div>,
+    document.body,
+  );
+}
+
+type RenameSetDialogProps = {
+  onCancel: () => void;
+  onRename: (set: FlashcardSet, name: string) => Promise<string | null>;
+  set: FlashcardSet;
+};
+
+function RenameSetDialog({ onCancel, onRename, set }: RenameSetDialogProps) {
+  const [setName, setSetName] = useState(set.name);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const helperId = useId();
+  const errorId = useId();
+  const trimmedSetName = setName.trim();
+  const canSubmit = trimmedSetName.length > 0 && trimmedSetName !== set.name && !isSubmitting;
+  const describedBy = error ? `${descriptionId} ${helperId} ${errorId}` : `${descriptionId} ${helperId}`;
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canSubmit) return;
+
+    setIsSubmitting(true);
+    const renameError = await onRename(set, trimmedSetName);
+    setIsSubmitting(false);
+
+    if (renameError) {
+      setError(renameError);
+      return;
+    }
+
+    onCancel();
+  }
+
+  return createPortal(
+    <div
+      className="create-set-sheet-layer"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <form
+        className="create-set-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onSubmit={handleSubmit}
+      >
+        <div className="create-set-sheet-handle" aria-hidden />
+
+        <div className="create-set-sheet-header">
+          <div>
+            <h2 className="create-set-sheet-title" id={titleId}>
+              Rename set
+            </h2>
+            <p className="create-set-sheet-description" id={descriptionId}>
+              Choose a clear name for this collection.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="create-set-sheet-close"
+            aria-label="Close rename set dialog"
+            onClick={onCancel}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+
+        <label className="create-set-field-label" htmlFor="rename-set-name">
+          Set name
+        </label>
+        <input
+          ref={inputRef}
+          id="rename-set-name"
+          className={`create-set-name-input ${error ? "has-error" : ""}`}
+          value={setName}
+          aria-invalid={error ? "true" : undefined}
+          aria-describedby={describedBy}
+          onChange={(event) => {
+            setSetName(event.target.value);
+            setError(null);
+          }}
+        />
+        <p className="create-set-field-helper" id={helperId}>
+          Keep it short and specific.
+        </p>
+        {error ? (
+          <p className="create-set-field-error" id={errorId}>
+            {error}
+          </p>
+        ) : null}
+
+        <button type="submit" className="create-set-submit" disabled={!canSubmit}>
+          {isSubmitting ? "Saving" : "Save name"}
         </button>
       </form>
     </div>,
@@ -835,6 +1005,10 @@ function getSetGroups(sets: FlashcardSet[]) {
   };
 }
 
+function isEditableCustomSet(set: FlashcardSet) {
+  return set.source === "User" && set.isApiBacked === true && !set.readonly;
+}
+
 function formatSetCount(count: number) {
   return `${count} ${count === 1 ? "set" : "sets"}`;
 }
@@ -845,7 +1019,15 @@ function getPracticeLabel(index: number) {
 }
 
 function getLearnedCardCount(set: FlashcardSet) {
+  if (set.flashcards.length === 0 && set.progressSummary) {
+    return set.progressSummary.learnedCount;
+  }
+
   return set.flashcards.filter((card) => card.isLearned).length;
+}
+
+function getSetCardCount(set: FlashcardSet) {
+  return set.progressSummary?.cardCount ?? set.cardCount ?? set.flashcards.length;
 }
 
 function getLastPracticedLabel(setId: string) {
