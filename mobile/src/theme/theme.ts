@@ -43,7 +43,12 @@ export const theme = {
     pill: 999,
   },
   typography: {
-    fontFamily: undefined,
+    fontFamily: 'NunitoSans_400Regular',
+    fontFamilyMedium: 'NunitoSans_500Medium',
+    fontFamilySemiBold: 'NunitoSans_600SemiBold',
+    fontFamilyBold: 'NunitoSans_700Bold',
+    fontFamilyExtraBold: 'NunitoSans_700Bold',
+    fontFamilyHeavy: 'NunitoSans_700Bold',
     sizes: {
       tab: 9,
       tiny: 10,
@@ -61,8 +66,8 @@ export const theme = {
       medium: '500',
       semibold: '600',
       bold: '700',
-      extraBold: '800',
-      heavy: '900',
+      extraBold: '700',
+      heavy: '700',
     },
   },
   shadow: {

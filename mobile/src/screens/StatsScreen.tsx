@@ -59,12 +59,14 @@ const styles = StyleSheet.create({
   kicker: {
     color: theme.colors.textMuted,
     fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 2,
   },
   title: {
     color: theme.colors.text,
     fontSize: theme.typography.sizes.h1,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
   },
   subtitle: {
@@ -88,6 +90,7 @@ const styles = StyleSheet.create({
   heroValue: {
     color: theme.colors.surface,
     fontSize: 58,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     marginTop: theme.spacing.lg,
@@ -95,6 +98,7 @@ const styles = StyleSheet.create({
   heroLabel: {
     color: theme.colors.surface,
     fontSize: theme.typography.sizes.title,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
   },
   heroText: {
@@ -113,6 +117,7 @@ const styles = StyleSheet.create({
   metricValue: {
     color: theme.colors.text,
     fontSize: theme.typography.sizes.h2,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
   },
   metricLabel: {

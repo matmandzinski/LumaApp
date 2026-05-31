@@ -124,6 +124,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: theme.typography.sizes.tab,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 1.1,
     lineHeight: 11,

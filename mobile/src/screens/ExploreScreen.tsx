@@ -28,12 +28,14 @@ const styles = StyleSheet.create({
   kicker: {
     color: theme.colors.textMuted,
     fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 2,
   },
   title: {
     color: theme.colors.text,
     fontSize: 34,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     lineHeight: 36,
   },
@@ -52,6 +54,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     color: theme.colors.text,
     fontSize: 21,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     lineHeight: 24,
     marginTop: 18,

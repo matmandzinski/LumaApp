@@ -34,6 +34,7 @@ const styles = StyleSheet.create({
   label: {
     color: theme.colors.deepPurple,
     fontSize: theme.typography.sizes.small,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
   },
 });

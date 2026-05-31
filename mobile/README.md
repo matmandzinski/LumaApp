@@ -1,6 +1,6 @@
 # Luma Mobile
 
-Initial React Native / Expo mobile client for Luma. This is intentionally small: it sets up the native app shell, bottom tabs, a static habit-first Today screen, placeholder tabs, a shared theme, and an API client placeholder.
+Initial React Native / Expo mobile client for Luma. It sets up the native app shell, bottom tabs, the habit-first Today screen, shared theme, and a local API client for sets and learning flows.
 
 The existing Vite web app in `../web` and the existing API in `../SimpleFlashCards.Api` are not changed by this mobile app.
 
@@ -59,7 +59,7 @@ You can also start Expo with `npx expo start` and press `a`.
 
 ## API Base URL
 
-The placeholder API client lives in `src/services/appApi.ts`.
+The API client lives in `src/services/appApi.ts`.
 
 Default local API base URL:
 
@@ -75,8 +75,6 @@ EXPO_PUBLIC_API_BASE_URL=http://localhost:5057 npx expo start
 
 Device notes:
 
-- Web/local computer: `http://localhost:5057`
-- Physical phone: use your computer LAN IP, for example `http://192.168.x.x:5057`
+- iOS Simulator and Expo Web on your computer: `http://localhost:5057`
 - Android Emulator: use `http://10.0.2.2:5057`
-
-The mobile UI does not call the API yet. API integration should be a separate migration step.
+- Physical phone: use your computer LAN IP, for example `http://192.168.x.x:5057`

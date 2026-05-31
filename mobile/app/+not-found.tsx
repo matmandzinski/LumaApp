@@ -29,6 +29,7 @@ const styles = StyleSheet.create({
   title: {
     color: theme.colors.text,
     fontSize: theme.typography.sizes.title,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
   },
   link: {
@@ -38,6 +39,7 @@ const styles = StyleSheet.create({
   linkText: {
     color: theme.colors.primary,
     fontSize: theme.typography.sizes.body,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
   },
 });

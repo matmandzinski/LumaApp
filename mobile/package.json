@@ -3,7 +3,9 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@expo-google-fonts/nunito-sans": "^0.4.2",
     "expo": "~56.0.5",
+    "expo-blur": "~56.0.3",
     "expo-constants": "~56.0.16",
     "expo-font": "~56.0.5",
     "expo-linear-gradient": "~56.0.4",

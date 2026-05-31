@@ -1,9 +1,16 @@
-export const DEFAULT_API_BASE_URL = 'http://localhost:5057';
+import { Platform } from 'react-native';
 
-// TODO: Physical iPhone/Android devices need your computer LAN IP instead of localhost,
-// for example http://192.168.x.x:5057. Android Emulator may need http://10.0.2.2:5057.
+export const DEFAULT_API_BASE_URL = 'http://localhost:5057';
+export const ANDROID_EMULATOR_API_BASE_URL = 'http://10.0.2.2:5057';
+
+// iOS Simulator can use localhost. Android Emulator needs 10.0.2.2 to reach
+// the host machine. Physical phones still need EXPO_PUBLIC_API_BASE_URL set to
+// your computer LAN IP, for example http://192.168.x.x:5057.
+const platformDefaultApiBaseUrl =
+  Platform.OS === 'android' ? ANDROID_EMULATOR_API_BASE_URL : DEFAULT_API_BASE_URL;
+
 export const apiBaseUrl =
-  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ?? DEFAULT_API_BASE_URL;
+  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ?? platformDefaultApiBaseUrl;
 
 export type ApiRequestOptions = RequestInit;
 
@@ -86,6 +93,21 @@ export type ApiActiveSetResponse = {
   activeSetExternalId: string;
 };
 
+export type ApiUpdateSetRequest = {
+  name: string;
+};
+
+export type ApiCardInputRequest = {
+  front: string;
+  back: string;
+};
+
+export type ApiDeleteSetResponse = {
+  externalId: string;
+  deleted: boolean;
+  activeSetExternalId: string | null;
+};
+
 export type ApiReviewDecision = 'know' | 'reviewAgain';
 
 export type ApiReviewSessionType = 'quickLesson' | 'continueLearning';
@@ -148,6 +170,41 @@ export async function saveActiveSet(externalSetId: string) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ activeSetId: externalSetId }),
+  });
+}
+
+export async function resetSetProgress(externalSetId: string) {
+  return requestJson<ApiProgressSummary>(
+    `/api/sets/${encodeURIComponent(externalSetId)}/reset-progress`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export async function renameSet(externalSetId: string, name: string) {
+  return requestJson<ApiSetDetail>(`/api/sets/${encodeURIComponent(externalSetId)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name } satisfies ApiUpdateSetRequest),
+  });
+}
+
+export async function deleteSet(externalSetId: string) {
+  return requestJson<ApiDeleteSetResponse>(`/api/sets/${encodeURIComponent(externalSetId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function addCard(externalSetId: string, input: ApiCardInputRequest) {
+  return requestJson<ApiFlashcard>(`/api/sets/${encodeURIComponent(externalSetId)}/cards`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
   });
 }
 

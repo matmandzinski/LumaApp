@@ -1,10 +1,29 @@
 import { router, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
 
 import { Screen } from '@/src/components/Screen';
-import { AppApiError, getAppState, getSets, type ApiSetListItem } from '@/src/services/appApi';
+import {
+  AppApiError,
+  deleteSet,
+  getAppState,
+  getSets,
+  renameSet,
+  resetSetProgress,
+  saveActiveSet,
+  type ApiSetListItem,
+} from '@/src/services/appApi';
 import { getLearningCountsFromSummary } from '@/src/services/learningSession';
 import { theme } from '@/src/theme/theme';
 
@@ -22,11 +41,30 @@ type SetCardData = {
   externalId: string;
   icon: IconName;
   id: string;
+  internalId: string;
   isActive?: boolean;
   progress: number;
+  readonly: boolean;
+  source: ApiSetListItem['source'];
   tileColors: [string, string];
   title: string;
 };
+
+type SetMenuAction = 'setActive' | 'resetProgress' | 'rename' | 'delete';
+
+type PendingAction = {
+  action: SetMenuAction;
+  setId: string;
+} | null;
+
+type OpenSetMenu = {
+  setId: string;
+  x: number;
+  y: number;
+} | null;
+
+const ACTION_MENU_WIDTH = 188;
+const ACTION_MENU_ROW_HEIGHT = 58;
 
 const segments: Segment[] = [
   {
@@ -50,11 +88,18 @@ const tilePresets: Array<{ icon: IconName; tileColors: [string, string] }> = [
 ];
 
 export function SetsScreen() {
+  const windowSize = useWindowDimensions();
   const [activeSegment, setActiveSegment] = useState<SegmentId>('my-sets');
   const [sets, setSets] = useState<ApiSetListItem[]>([]);
   const [activeSetId, setActiveSetId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeSetError, setActiveSetError] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<OpenSetMenu>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [renameTarget, setRenameTarget] = useState<SetCardData | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
   const setCards = useMemo(
     () =>
       sets
@@ -62,48 +107,278 @@ export function SetsScreen() {
         .map((set, index) => toSetCardData(set, activeSetId, index)),
     [activeSegment, activeSetId, sets],
   );
+  const openMenuSet = setCards.find((set) => set.id === openMenu?.setId) ?? null;
+  const actionMenuPosition = getActionMenuPosition(openMenu, openMenuSet, windowSize);
+
+  const headerTitle = activeSegment === 'my-sets' ? 'My Sets' : 'Ready-made';
+
+  const loadSets = useCallback(
+    async ({ isCancelled }: { isCancelled?: () => boolean } = {}) => {
+      setIsLoading(true);
+      setErrorMessage(null);
+      setActiveSetError(null);
+
+      try {
+        const [appState, apiSets] = await Promise.all([getAppState(), getSets()]);
+        if (isCancelled?.()) return;
+
+        const persistedActiveSetId = appState.activeSetExternalId ?? appState.activeSetId;
+        const activeSetExists = apiSets.some((set) => set.externalId === persistedActiveSetId);
+        const fallbackReadyMadeSet = apiSets.find((set) => set.source === 'ReadyMade');
+        const nextActiveSetId = activeSetExists
+          ? persistedActiveSetId
+          : fallbackReadyMadeSet?.externalId ?? null;
+
+        setSets(apiSets);
+        setActiveSetId(nextActiveSetId);
+
+        const hasUserSets = apiSets.some((set) => set.source === 'User');
+        if (!hasUserSets) setActiveSegment('ready-made');
+
+        if (nextActiveSetId && nextActiveSetId !== persistedActiveSetId) {
+          void saveActiveSet(nextActiveSetId).catch((error: unknown) => {
+            console.warn('Unable to persist fallback active set.', error);
+            setActiveSetError(
+              getApiErrorMessage(error, 'Unable to save the fallback active set.'),
+            );
+          });
+        }
+      } catch (error) {
+        if (isCancelled?.()) return;
+
+        console.warn('Unable to load sets.', error);
+        setSets([]);
+        setActiveSetId(null);
+        setErrorMessage('Could not load sets. Make sure the local API is running.');
+      } finally {
+        if (!isCancelled?.()) setIsLoading(false);
+      }
+    },
+    [],
+  );
+
+  function openSet(set: SetCardData) {
+    setOpenMenu(null);
+    setActiveSetError(null);
+
+    router.push({
+      pathname: '/set/[externalSetId]',
+      params: { externalSetId: set.externalId },
+    });
+  }
+
+  async function activateSet(set: SetCardData) {
+    if (pendingAction) return;
+
+    const previousActiveSetId = activeSetId;
+    setOpenMenu(null);
+    setActiveSetId(set.externalId);
+    setActiveSetError(null);
+    setPendingAction({ action: 'setActive', setId: set.externalId });
+
+    try {
+      await saveActiveSet(set.externalId);
+    } catch (error) {
+      console.warn('Unable to save active set.', error);
+      setActiveSetId(previousActiveSetId);
+      setActiveSetError(getApiErrorMessage(error, 'Unable to save the active set.'));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function confirmResetSetProgress(set: SetCardData) {
+    setOpenMenu(null);
+
+    Alert.alert(
+      'Reset set progress?',
+      `This will reset learning progress for ${set.title}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            void resetProgress(set);
+          },
+        },
+      ],
+    );
+  }
+
+  async function resetProgress(set: SetCardData) {
+    if (pendingAction) return;
+
+    setActiveSetError(null);
+    setPendingAction({ action: 'resetProgress', setId: set.externalId });
+
+    try {
+      const progressSummary = await resetSetProgress(set.externalId);
+
+      setSets((currentSets) =>
+        currentSets.map((currentSet) =>
+          currentSet.externalId === set.externalId
+            ? {
+                ...currentSet,
+                cardCount: progressSummary.cardCount,
+                progressSummary,
+              }
+            : currentSet,
+        ),
+      );
+    } catch (error) {
+      console.warn(`Unable to reset progress for ${set.title}.`, error);
+      setActiveSetError(getApiErrorMessage(error, `Unable to reset progress for ${set.title}.`));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function openRenameModal(set: SetCardData) {
+    if (set.source !== 'User') return;
+
+    setOpenMenu(null);
+    setRenameTarget(set);
+    setRenameValue(set.title);
+    setRenameError(null);
+  }
+
+  function closeRenameModal() {
+    if (pendingAction?.action === 'rename') return;
+
+    setRenameTarget(null);
+    setRenameValue('');
+    setRenameError(null);
+  }
+
+  async function submitRename() {
+    if (!renameTarget || pendingAction) return;
+
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      setRenameError('Set name is required.');
+      return;
+    }
+
+    setRenameError(null);
+    setPendingAction({ action: 'rename', setId: renameTarget.externalId });
+
+    try {
+      const updatedSet = await renameSet(renameTarget.externalId, nextName);
+
+      setSets((currentSets) =>
+        currentSets.map((currentSet) =>
+          currentSet.externalId === updatedSet.externalId
+            ? {
+                ...currentSet,
+                cardCount: updatedSet.cardCount,
+                name: updatedSet.name,
+                progressSummary: updatedSet.progressSummary,
+              }
+            : currentSet,
+        ),
+      );
+      setRenameTarget(null);
+      setRenameValue('');
+    } catch (error) {
+      console.warn(`Unable to rename ${renameTarget.title}.`, error);
+      setRenameError(getApiErrorMessage(error, `Unable to rename ${renameTarget.title}.`));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function confirmDeleteSet(set: SetCardData) {
+    if (set.source !== 'User') return;
+
+    setOpenMenu(null);
+    Alert.alert(
+      'Delete set?',
+      `${set.title} will be removed from your sets.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void removeSet(set);
+          },
+        },
+      ],
+    );
+  }
+
+  async function removeSet(set: SetCardData) {
+    if (pendingAction) return;
+
+    setActiveSetError(null);
+    setPendingAction({ action: 'delete', setId: set.externalId });
+
+    try {
+      const response = await deleteSet(set.externalId);
+      const remainingSets = sets.filter((currentSet) => currentSet.externalId !== set.externalId);
+
+      setSets(remainingSets);
+
+      if (activeSetId === set.externalId) {
+        const fallbackActiveSet =
+          response.activeSetExternalId ??
+          remainingSets.find((currentSet) => currentSet.source === 'ReadyMade')?.externalId ??
+          remainingSets[0]?.externalId ??
+          null;
+
+        setActiveSetId(fallbackActiveSet);
+
+        if (fallbackActiveSet && fallbackActiveSet !== response.activeSetExternalId) {
+          await saveActiveSet(fallbackActiveSet);
+        }
+      }
+    } catch (error) {
+      console.warn(`Unable to delete ${set.title}.`, error);
+      setActiveSetError(getApiErrorMessage(error, `Unable to delete ${set.title}.`));
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function handleMenuAction(action: SetMenuAction, set: SetCardData) {
+    if (pendingAction) return;
+
+    if (action === 'setActive') {
+      void activateSet(set);
+      return;
+    }
+
+    if (action === 'resetProgress') {
+      confirmResetSetProgress(set);
+      return;
+    }
+
+    if (action === 'rename') {
+      openRenameModal(set);
+      return;
+    }
+
+    confirmDeleteSet(set);
+  }
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
 
-      async function loadSets() {
-        setIsLoading(true);
-        setErrorMessage(null);
-
-        try {
-          const [appState, apiSets] = await Promise.all([getAppState(), getSets()]);
-
-          if (cancelled) return;
-
-          setActiveSetId(appState.activeSetExternalId ?? appState.activeSetId);
-          setSets(apiSets);
-
-          const hasUserSets = apiSets.some((set) => set.source === 'User');
-          if (!hasUserSets) setActiveSegment('ready-made');
-        } catch (error) {
-          if (cancelled) return;
-
-          console.warn('Unable to load sets.', error);
-          setErrorMessage(getApiErrorMessage(error, 'Unable to load sets from the local API.'));
-        } finally {
-          if (!cancelled) setIsLoading(false);
-        }
-      }
-
-      void loadSets();
+      void loadSets({ isCancelled: () => cancelled });
 
       return () => {
         cancelled = true;
       };
-    }, []),
+    }, [loadSets]),
   );
 
   return (
     <View style={styles.root}>
       <Screen contentContainerStyle={styles.screen}>
         <View style={styles.header}>
-          <Text style={styles.title}>My Sets</Text>
+          <Text style={styles.title}>{headerTitle}</Text>
           <Pressable
             accessibilityLabel="Search sets"
             accessibilityRole="button"
@@ -115,29 +390,73 @@ export function SetsScreen() {
         <SegmentedControl
           activeSegment={activeSegment}
           segments={segments}
-          onSegmentChange={setActiveSegment}
+          onSegmentChange={(segment) => {
+            setOpenMenu(null);
+            setActiveSegment(segment);
+          }}
         />
 
         <View style={styles.cardList}>
+          {activeSetError ? <Text style={styles.inlineError}>{activeSetError}</Text> : null}
           {isLoading ? <StateCard message="Loading your decks." title="Getting sets..." /> : null}
-          {errorMessage ? <StateCard message={errorMessage} title="Could not load sets." /> : null}
+          {errorMessage ? (
+            <StateCard
+              actionLabel="Retry"
+              message={errorMessage}
+              title="Could not load sets."
+              onAction={() => void loadSets()}
+            />
+          ) : null}
           {!isLoading && !errorMessage && setCards.length === 0 ? (
             <StateCard
               message={
                 activeSegment === 'my-sets'
-                  ? 'User-created sets will appear here after you add them in the API-backed app.'
+                  ? 'Create your first learning set.'
                   : 'No ready-made sets are available from the local API.'
               }
-              title="No sets here yet."
+              title={activeSegment === 'my-sets' ? 'No custom sets yet' : 'No ready-made sets yet'}
             />
           ) : null}
           {!isLoading && !errorMessage
-            ? setCards.map((set) => <SetCard key={set.id} set={set} />)
+            ? setCards.map((set) => (
+                <SetCard
+                  key={set.id}
+                  isMenuOpen={openMenu?.setId === set.id}
+                  onMenuAction={handleMenuAction}
+                  onMenuToggle={(selectedSet, event) => {
+                    const { pageX, pageY } = event.nativeEvent;
+                    setOpenMenu((currentMenu) =>
+                      currentMenu?.setId === selectedSet.id
+                        ? null
+                        : { setId: selectedSet.id, x: pageX, y: pageY },
+                    );
+                  }}
+                  onOpen={openSet}
+                  set={set}
+                />
+              ))
             : null}
         </View>
       </Screen>
 
       <FloatingActionButton />
+      <SetActionMenuModal
+        left={actionMenuPosition.left}
+        set={openMenuSet}
+        top={actionMenuPosition.top}
+        visible={openMenuSet !== null}
+        onClose={() => setOpenMenu(null)}
+        onSelect={handleMenuAction}
+      />
+      <RenameSetModal
+        errorMessage={renameError}
+        isSubmitting={pendingAction?.action === 'rename'}
+        setName={renameValue}
+        visible={renameTarget !== null}
+        onChangeName={setRenameValue}
+        onClose={closeRenameModal}
+        onSubmit={() => void submitRename()}
+      />
     </View>
   );
 }
@@ -178,22 +497,22 @@ function SegmentedControl({ activeSegment, onSegmentChange, segments }: Segmente
 }
 
 type SetCardProps = {
+  isMenuOpen: boolean;
+  onMenuAction: (action: SetMenuAction, set: SetCardData) => void;
+  onMenuToggle: (set: SetCardData, event: GestureResponderEvent) => void;
+  onOpen: (set: SetCardData) => void;
   set: SetCardData;
 };
 
-function SetCard({ set }: SetCardProps) {
+function SetCard({ isMenuOpen, onMenuAction, onMenuToggle, onOpen, set }: SetCardProps) {
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() =>
-        router.push({
-          pathname: '/set/[externalSetId]',
-          params: { externalSetId: set.externalId },
-        })
-      }
+      onPress={() => onOpen(set)}
       style={({ pressed }) => [
         styles.setCard,
         set.isActive && styles.setCardActive,
+        isMenuOpen && styles.setCardMenuOpen,
         pressed && styles.pressed,
       ]}>
       <LinearGradient
@@ -201,7 +520,7 @@ function SetCard({ set }: SetCardProps) {
         end={{ x: 1, y: 1 }}
         start={{ x: 0, y: 0 }}
         style={styles.iconTile}>
-        <LineIcon color="#FFFFFF" name={set.icon} size={52} />
+        <LineIcon color="#FFFFFF" name={set.icon} size={44} />
       </LinearGradient>
 
       <View style={styles.setContent}>
@@ -215,7 +534,13 @@ function SetCard({ set }: SetCardProps) {
 
           <View style={styles.cardActions}>
             {set.isActive ? <ActivePill /> : null}
-            <ThreeDotButton />
+            <ThreeDotButton
+              expanded={isMenuOpen}
+              onPress={(event) => {
+                event.stopPropagation();
+                onMenuToggle(set, event);
+              }}
+            />
           </View>
         </View>
 
@@ -236,13 +561,76 @@ function ActivePill() {
   );
 }
 
-function ThreeDotButton() {
+type ThreeDotButtonProps = {
+  expanded: boolean;
+  onPress: (event: GestureResponderEvent) => void;
+};
+
+function ThreeDotButton({ expanded, onPress }: ThreeDotButtonProps) {
   return (
-    <View style={styles.moreButton}>
+    <Pressable
+      accessibilityLabel="Set actions"
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+      hitSlop={10}
+      onPress={onPress}
+      style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}>
       <View style={styles.dot} />
       <View style={styles.dot} />
       <View style={styles.dot} />
-    </View>
+    </Pressable>
+  );
+}
+
+type SetActionMenuProps = {
+  left: number;
+  onClose: () => void;
+  onSelect: (action: SetMenuAction, set: SetCardData) => void;
+  set: SetCardData | null;
+  top: number;
+  visible: boolean;
+};
+
+function SetActionMenuModal({ left, onClose, onSelect, set, top, visible }: SetActionMenuProps) {
+  if (!set) return null;
+
+  const actions: Array<{ action: SetMenuAction; label: string }> = [
+    { action: 'setActive', label: 'Set active' },
+    { action: 'resetProgress', label: 'Reset set progress' },
+  ];
+
+  if (set.source === 'User') {
+    actions.push({ action: 'rename', label: 'Rename set' });
+    actions.push({ action: 'delete', label: 'Delete set' });
+  }
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <Pressable style={styles.menuModalOverlay} onPress={onClose}>
+        <Pressable
+          onPress={(event) => {
+            event.stopPropagation();
+          }}
+          style={[styles.actionMenu, { left, top }]}>
+          {actions.map((item, index) => (
+            <Pressable
+              accessibilityRole="menuitem"
+              key={item.action}
+              onPress={(event) => {
+                event.stopPropagation();
+                onSelect(item.action, set);
+              }}
+              style={({ pressed }) => [
+                styles.actionMenuRow,
+                pressed && styles.actionMenuRowPressed,
+                index < actions.length - 1 && styles.actionMenuRowDivider,
+              ]}>
+              <Text style={styles.actionMenuText}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -272,16 +660,100 @@ function FloatingActionButton() {
   );
 }
 
+type RenameSetModalProps = {
+  errorMessage: string | null;
+  isSubmitting: boolean;
+  setName: string;
+  visible: boolean;
+  onChangeName: (name: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+};
+
+function RenameSetModal({
+  errorMessage,
+  isSubmitting,
+  setName,
+  visible,
+  onChangeName,
+  onClose,
+  onSubmit,
+}: RenameSetModalProps) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable
+          style={styles.renameModal}
+          onPress={(event) => {
+            event.stopPropagation();
+          }}>
+          <Text style={styles.renameTitle}>Rename set</Text>
+          <TextInput
+            autoCapitalize="sentences"
+            autoFocus
+            editable={!isSubmitting}
+            onChangeText={onChangeName}
+            placeholder="Set name"
+            placeholderTextColor="#8C948E"
+            selectTextOnFocus
+            style={styles.renameInput}
+            value={setName}
+          />
+          {errorMessage ? <Text style={styles.renameError}>{errorMessage}</Text> : null}
+
+          <View style={styles.renameActions}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting}
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.renameButton,
+                styles.renameButtonSecondary,
+                pressed && !isSubmitting && styles.pressed,
+              ]}>
+              <Text style={styles.renameButtonSecondaryText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSubmitting}
+              onPress={onSubmit}
+              style={({ pressed }) => [
+                styles.renameButton,
+                styles.renameButtonPrimary,
+                isSubmitting && styles.disabledButton,
+                pressed && !isSubmitting && styles.pressed,
+              ]}>
+              <Text style={styles.renameButtonPrimaryText}>
+                {isSubmitting ? 'Saving...' : 'Save'}
+              </Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 type StateCardProps = {
+  actionLabel?: string;
   message: string;
+  onAction?: () => void;
   title: string;
 };
 
-function StateCard({ message, title }: StateCardProps) {
+function StateCard({ actionLabel, message, onAction, title }: StateCardProps) {
   return (
     <View style={styles.stateCard}>
       <Text style={styles.stateTitle}>{title}</Text>
       <Text style={styles.stateMessage}>{message}</Text>
+      {actionLabel && onAction ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onAction}
+          style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
+          <Text style={styles.retryButtonText}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -300,9 +772,12 @@ function toSetCardData(
     cardCount: set.cardCount,
     externalId: set.externalId,
     icon: getSetIcon(set.name, preset.icon),
-    id: set.id,
+    id: set.externalId,
+    internalId: set.id,
     isActive: activeSetId === set.externalId,
     progress,
+    readonly: set.source === 'ReadyMade',
+    source: set.source,
     tileColors: preset.tileColors,
     title: set.name,
   };
@@ -324,6 +799,24 @@ function getApiErrorMessage(error: unknown, fallbackMessage: string) {
   if (error instanceof AppApiError) return error.message;
 
   return fallbackMessage;
+}
+
+function getActionMenuPosition(
+  menu: OpenSetMenu,
+  set: SetCardData | null,
+  windowSize: { width: number; height: number },
+) {
+  if (!menu) return { left: 0, top: 0 };
+
+  const actionCount = set?.source === 'User' ? 4 : 2;
+  const menuHeight = actionCount * ACTION_MENU_ROW_HEIGHT;
+  const maxLeft = Math.max(16, windowSize.width - ACTION_MENU_WIDTH - 16);
+  const maxTop = Math.max(16, windowSize.height - menuHeight - 16);
+
+  return {
+    left: Math.min(Math.max(16, menu.x - ACTION_MENU_WIDTH + 12), maxLeft),
+    top: Math.min(Math.max(16, menu.y + 12), maxTop),
+  };
 }
 
 type LineIconProps = {
@@ -452,8 +945,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#101522',
-    fontFamily: theme.typography.fontFamily,
     fontSize: 34,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     lineHeight: 35,
@@ -503,16 +996,16 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   segmentLabel: {
-    fontFamily: theme.typography.fontFamily,
     flexShrink: 1,
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
     letterSpacing: 0,
     lineHeight: 23,
   },
   cardList: {
-    gap: 18,
-    marginTop: 30,
+    gap: 14,
+    marginTop: 26,
   },
   setCard: {
     alignItems: 'center',
@@ -521,13 +1014,13 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 15,
-    minHeight: 138,
-    overflow: 'hidden',
-    paddingBottom: 18,
-    paddingLeft: 15,
-    paddingRight: 16,
-    paddingTop: 18,
+    gap: 13,
+    minHeight: 118,
+    overflow: 'visible',
+    paddingBottom: 14,
+    paddingLeft: 14,
+    paddingRight: 14,
+    paddingTop: 14,
     shadowColor: '#2A261E',
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.08,
@@ -540,16 +1033,20 @@ const styles = StyleSheet.create({
     shadowColor: '#247A4D',
     shadowOpacity: 0.13,
   },
+  setCardMenuOpen: {
+    zIndex: 30,
+    elevation: 12,
+  },
   iconTile: {
     alignItems: 'center',
-    borderRadius: 19,
-    height: 92,
+    borderRadius: 17,
+    height: 78,
     justifyContent: 'center',
-    width: 92,
+    width: 78,
   },
   setContent: {
     flex: 1,
-    gap: 20,
+    gap: 14,
     minWidth: 0,
   },
   setHeader: {
@@ -566,25 +1063,27 @@ const styles = StyleSheet.create({
   },
   setTitle: {
     color: '#101522',
-    fontFamily: theme.typography.fontFamily,
     fontSize: 18,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
     letterSpacing: 0,
     lineHeight: 23,
   },
   cardCount: {
     color: '#657086',
-    fontFamily: theme.typography.fontFamily,
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 21,
-    marginTop: 10,
+    marginTop: 6,
   },
   cardActions: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 7,
-    minHeight: 38,
+    minHeight: 32,
+    position: 'relative',
+    zIndex: 35,
   },
   activePill: {
     alignItems: 'center',
@@ -592,24 +1091,61 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(47,143,89,0.1)',
     borderRadius: 13,
     borderWidth: 1,
-    height: 34,
+    height: 30,
     justifyContent: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
   },
   activePillText: {
     color: theme.colors.accentStrong,
-    fontFamily: theme.typography.fontFamily,
     fontSize: 14,
-    fontWeight: theme.typography.weights.extraBold,
+    fontFamily: theme.typography.fontFamilySemiBold,
+    fontWeight: theme.typography.weights.semibold,
     lineHeight: 18,
   },
   moreButton: {
     alignItems: 'center',
     borderRadius: theme.radius.pill,
     gap: 4,
-    height: 34,
+    height: 40,
     justifyContent: 'center',
-    width: 15,
+    marginRight: -7,
+    width: 28,
+  },
+  actionMenu: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(26,30,27,0.1)',
+    borderRadius: 15,
+    borderWidth: 1,
+    minWidth: 188,
+    overflow: 'hidden',
+    position: 'absolute',
+    shadowColor: '#2A261E',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.2,
+    shadowRadius: 28,
+    width: ACTION_MENU_WIDTH,
+    zIndex: 200,
+    elevation: 24,
+  },
+  actionMenuRow: {
+    backgroundColor: '#FFFFFF',
+    height: 58,
+    justifyContent: 'center',
+    paddingHorizontal: 19,
+  },
+  actionMenuRowPressed: {
+    backgroundColor: '#F2F5EF',
+  },
+  actionMenuRowDivider: {
+    borderBottomColor: 'rgba(20,21,24,0.08)',
+    borderBottomWidth: 1,
+  },
+  actionMenuText: {
+    color: '#161815',
+    fontSize: 14,
+    fontFamily: theme.typography.fontFamilyBold,
+    fontWeight: theme.typography.weights.bold,
+    lineHeight: 19,
   },
   dot: {
     backgroundColor: '#778197',
@@ -620,7 +1156,7 @@ const styles = StyleSheet.create({
   progressRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 13,
+    gap: 10,
   },
   progressTrack: {
     backgroundColor: 'rgba(20,21,24,0.07)',
@@ -636,8 +1172,8 @@ const styles = StyleSheet.create({
   },
   progressLabel: {
     color: '#657086',
-    fontFamily: theme.typography.fontFamily,
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 20,
     minWidth: 42,
@@ -674,19 +1210,135 @@ const styles = StyleSheet.create({
   },
   stateTitle: {
     color: theme.colors.text,
-    fontFamily: theme.typography.fontFamily,
     fontSize: 21,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     lineHeight: 25,
   },
   stateMessage: {
     color: theme.colors.textMuted,
-    fontFamily: theme.typography.fontFamily,
     fontSize: 15,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 22,
     marginTop: 8,
+  },
+  retryButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.accentStrong,
+    borderRadius: theme.radius.pill,
+    height: 42,
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingHorizontal: 18,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontFamily: theme.typography.fontFamilyExtraBold,
+    fontWeight: theme.typography.weights.extraBold,
+  },
+  inlineError: {
+    color: theme.colors.reviewRed,
+    fontSize: 13,
+    fontFamily: theme.typography.fontFamilySemiBold,
+    fontWeight: theme.typography.weights.semibold,
+    lineHeight: 18,
+    marginHorizontal: 2,
+  },
+  menuModalOverlay: {
+    backgroundColor: 'transparent',
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  modalOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(20,24,21,0.28)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  renameModal: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(255,255,255,0.94)',
+    borderRadius: 24,
+    borderWidth: 1,
+    maxWidth: 390,
+    padding: 22,
+    shadowColor: '#2A261E',
+    shadowOffset: { width: 0, height: 24 },
+    shadowOpacity: 0.2,
+    shadowRadius: 48,
+    width: '100%',
+    elevation: 18,
+  },
+  renameTitle: {
+    color: theme.colors.text,
+    fontSize: 22,
+    fontFamily: theme.typography.fontFamilyHeavy,
+    fontWeight: theme.typography.weights.heavy,
+    lineHeight: 27,
+  },
+  renameInput: {
+    backgroundColor: '#F7F8F5',
+    borderColor: 'rgba(36,122,77,0.16)',
+    borderRadius: 16,
+    borderWidth: 1,
+    color: theme.colors.text,
+    fontSize: 17,
+    fontFamily: theme.typography.fontFamilySemiBold,
+    fontWeight: theme.typography.weights.semibold,
+    height: 52,
+    marginTop: 18,
+    paddingHorizontal: 15,
+  },
+  renameError: {
+    color: theme.colors.reviewRed,
+    fontSize: 13,
+    fontFamily: theme.typography.fontFamilySemiBold,
+    fontWeight: theme.typography.weights.semibold,
+    lineHeight: 18,
+    marginTop: 10,
+  },
+  renameActions: {
+    flexDirection: 'row',
+    gap: 11,
+    marginTop: 20,
+  },
+  renameButton: {
+    alignItems: 'center',
+    borderRadius: theme.radius.pill,
+    flex: 1,
+    height: 50,
+    justifyContent: 'center',
+  },
+  renameButtonPrimary: {
+    backgroundColor: theme.colors.accentStrong,
+  },
+  renameButtonSecondary: {
+    backgroundColor: '#F7F8F5',
+    borderColor: 'rgba(20,21,24,0.08)',
+    borderWidth: 1,
+  },
+  renameButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontFamily: theme.typography.fontFamilyExtraBold,
+    fontWeight: theme.typography.weights.extraBold,
+  },
+  renameButtonSecondaryText: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontFamily: theme.typography.fontFamilyBold,
+    fontWeight: theme.typography.weights.bold,
+  },
+  disabledButton: {
+    opacity: 0.58,
   },
   lineIcon: {
     alignItems: 'center',

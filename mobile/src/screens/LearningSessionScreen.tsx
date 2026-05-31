@@ -1,10 +1,14 @@
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useMemo, useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import type { SymbolViewProps } from 'expo-symbols';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   Image,
+  PanResponder,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -39,6 +43,12 @@ type LearningSessionScreenProps = {
 
 type LoadStatus = 'loading' | 'ready' | 'empty' | 'noActive' | 'error';
 
+const CARD_EXIT_DURATION_MS = 440;
+const CARD_RETURN_DURATION_MS = 260;
+const SWIPE_TRIGGER_THRESHOLD_PX = 104;
+const TAP_MOVEMENT_THRESHOLD_PX = 8;
+const MAX_SWIPE_ROTATION_DEG = 4.5;
+
 const SESSION_COPY = {
   quickLesson: {
     completionMode: 'quick',
@@ -57,7 +67,7 @@ const SESSION_COPY = {
 } as const;
 
 export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [activeSet, setActiveSet] = useState<ApiSetDetail | null>(null);
   const [queue, setQueue] = useState<LearningQueueItem[]>([]);
@@ -67,13 +77,64 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCardAnimating, setIsCardAnimating] = useState(false);
+  const [isCardExiting, setIsCardExiting] = useState(false);
+  const flipProgress = useRef(new Animated.Value(0)).current;
+  const swipeX = useRef(new Animated.Value(0)).current;
+  const cardOpacity = useRef(new Animated.Value(1)).current;
+  const actionLockedRef = useRef(false);
   const copy = SESSION_COPY[mode];
   const isQuickLesson = mode === 'quickLesson';
   const activeItem = queue[0] ?? null;
+  const nextItem = queue[1] ?? null;
   const counts = useMemo(() => getLearningCounts(activeSet), [activeSet]);
-  const cardHeight = Math.min(360, Math.max(278, height * 0.43));
-  const cardText = activeItem ? (revealed ? activeItem.card.back : activeItem.card.front) : '';
-  const cardTextSize = getLearningTextSize(cardText);
+  const cardHeight = Math.min(510, Math.max(390, height * 0.6));
+  const contentWidth = Math.max(292, Math.min(width, 430) - theme.spacing.xl * 2);
+  const actionButtonWidth = (contentWidth - 11) / 2;
+  const frontText = activeItem?.card.front ?? '';
+  const backText = activeItem?.card.back ?? '';
+  const nextFrontText = nextItem?.card.front ?? '';
+  const frontTextSize = getLearningTextSize(frontText);
+  const backTextSize = getLearningTextSize(backText);
+  const nextFrontTextSize = getLearningTextSize(nextFrontText);
+  const frontFaceRotation = flipProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const backFaceRotation = flipProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
+  const cardShadowOpacity = flipProgress.interpolate({
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: [1, 0.35, 0, 0.35, 1],
+  });
+  const swipeRotation = swipeX.interpolate({
+    inputRange: [-SWIPE_TRIGGER_THRESHOLD_PX, 0, SWIPE_TRIGGER_THRESHOLD_PX],
+    outputRange: [`-${MAX_SWIPE_ROTATION_DEG}deg`, '0deg', `${MAX_SWIPE_ROTATION_DEG}deg`],
+    extrapolate: 'clamp',
+  });
+  const passFeedbackOpacity = swipeX.interpolate({
+    inputRange: [0, SWIPE_TRIGGER_THRESHOLD_PX * 0.18, SWIPE_TRIGGER_THRESHOLD_PX],
+    outputRange: [0, 0, 1],
+    extrapolate: 'clamp',
+  });
+  const repeatFeedbackOpacity = swipeX.interpolate({
+    inputRange: [-SWIPE_TRIGGER_THRESHOLD_PX, -SWIPE_TRIGGER_THRESHOLD_PX * 0.18, 0],
+    outputRange: [1, 0, 0],
+    extrapolate: 'clamp',
+  });
+  const passTintOpacity = swipeX.interpolate({
+    inputRange: [0, SWIPE_TRIGGER_THRESHOLD_PX * 0.04, SWIPE_TRIGGER_THRESHOLD_PX],
+    outputRange: [0, 0, 0.18],
+    extrapolate: 'clamp',
+  });
+  const repeatTintOpacity = swipeX.interpolate({
+    inputRange: [-SWIPE_TRIGGER_THRESHOLD_PX, -SWIPE_TRIGGER_THRESHOLD_PX * 0.04, 0],
+    outputRange: [0.16, 0, 0],
+    extrapolate: 'clamp',
+  });
+  const isInteractionPaused = isSubmitting || isCardAnimating;
   const activePosition = Math.min(reviewedCount + 1, Math.max(initialQueueSize, 1));
   const progressPercent =
     initialQueueSize > 0 ? Math.min((activePosition / initialQueueSize) * 100, 100) : 0;
@@ -86,6 +147,12 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
       setLoadError(null);
       setDecisionError(null);
       setRevealed(false);
+      flipProgress.setValue(0);
+      swipeX.setValue(0);
+      cardOpacity.setValue(1);
+      actionLockedRef.current = false;
+      setIsCardAnimating(false);
+      setIsCardExiting(false);
       setReviewedCount(0);
 
       try {
@@ -129,7 +196,17 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [mode]);
+  }, [mode, cardOpacity, flipProgress, swipeX]);
+
+  useEffect(() => {
+    setRevealed(false);
+    flipProgress.setValue(0);
+    swipeX.setValue(0);
+    cardOpacity.setValue(1);
+    actionLockedRef.current = false;
+    setIsCardAnimating(false);
+    setIsCardExiting(false);
+  }, [activeItem?.card.id, cardOpacity, flipProgress, swipeX]);
 
   function exitSession() {
     if (router.canGoBack()) {
@@ -140,8 +217,8 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
     router.replace('/');
   }
 
-  async function handleDecision(decision: ApiReviewDecision) {
-    if (!activeSet || !activeItem || isSubmitting) return;
+  async function submitDecision(decision: ApiReviewDecision) {
+    if (!activeSet || !activeItem || isSubmitting) return false;
 
     setDecisionError(null);
     setIsSubmitting(true);
@@ -166,6 +243,7 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
       setQueue(nextQueue);
       setReviewedCount(nextReviewedCount);
       setRevealed(false);
+      flipProgress.setValue(0);
 
       if (nextQueue.length === 0) {
         router.replace({
@@ -177,15 +255,152 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
           },
         });
       }
+
+      return true;
     } catch (error) {
       console.warn('Unable to save card review.', error);
       setDecisionError(
         getApiErrorMessage(error, 'Unable to save this review. Check the API and try again.'),
       );
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  function returnCardToCenter() {
+    actionLockedRef.current = true;
+    setIsCardExiting(false);
+    setIsCardAnimating(true);
+    Animated.parallel([
+      Animated.timing(swipeX, {
+        duration: CARD_RETURN_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        toValue: 0,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity, {
+        duration: CARD_RETURN_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      actionLockedRef.current = false;
+      setIsCardAnimating(false);
+    });
+  }
+
+  function handleCardAction(decision: ApiReviewDecision, exitStartX = 0) {
+    if (!activeSet || !activeItem || isInteractionPaused || actionLockedRef.current) return;
+
+    const direction = decision === 'know' ? 1 : -1;
+    const targetX = direction * (contentWidth + 160);
+
+    actionLockedRef.current = true;
+    setIsCardAnimating(true);
+    setIsCardExiting(true);
+    setDecisionError(null);
+    swipeX.stopAnimation();
+    cardOpacity.stopAnimation();
+    swipeX.setValue(exitStartX);
+
+    Animated.parallel([
+      Animated.timing(swipeX, {
+        duration: CARD_EXIT_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        toValue: targetX,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity, {
+        duration: CARD_EXIT_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        toValue: 0,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      void (async () => {
+        const didSubmit = await submitDecision(decision);
+
+        if (didSubmit) {
+          swipeX.setValue(0);
+          cardOpacity.setValue(1);
+          actionLockedRef.current = false;
+          setIsCardAnimating(false);
+          setIsCardExiting(false);
+          return;
+        }
+
+        cardOpacity.setValue(1);
+        setIsCardExiting(false);
+        returnCardToCenter();
+      })();
+    });
+  }
+
+  function toggleReveal() {
+    if (isInteractionPaused) return;
+
+    const nextRevealed = !revealed;
+    setRevealed(nextRevealed);
+
+    Animated.timing(flipProgress, {
+      duration: 360,
+      easing: Easing.out(Easing.cubic),
+      toValue: nextRevealed ? 1 : 0,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gestureState) => {
+          if (isInteractionPaused || actionLockedRef.current) return false;
+
+          const deltaX = gestureState.dx;
+          const deltaY = gestureState.dy;
+
+          return (
+            Math.abs(deltaX) >= TAP_MOVEMENT_THRESHOLD_PX &&
+            Math.abs(deltaX) > Math.abs(deltaY) * 0.65
+          );
+        },
+        onMoveShouldSetPanResponderCapture: (_event, gestureState) => {
+          if (isInteractionPaused || actionLockedRef.current) return false;
+
+          const deltaX = gestureState.dx;
+          const deltaY = gestureState.dy;
+
+          return (
+            Math.abs(deltaX) >= TAP_MOVEMENT_THRESHOLD_PX &&
+            Math.abs(deltaX) > Math.abs(deltaY) * 0.65
+          );
+        },
+        onPanResponderGrant: () => {
+          swipeX.stopAnimation();
+          cardOpacity.stopAnimation();
+        },
+        onPanResponderMove: (_event, gestureState) => {
+          swipeX.setValue(gestureState.dx);
+        },
+        onPanResponderRelease: (_event, gestureState) => {
+          const deltaX = gestureState.dx;
+
+          if (Math.abs(deltaX) < SWIPE_TRIGGER_THRESHOLD_PX) {
+            returnCardToCenter();
+            return;
+          }
+
+          handleCardAction(deltaX > 0 ? 'know' : 'reviewAgain', deltaX);
+        },
+        onPanResponderTerminate: () => {
+          returnCardToCenter();
+        },
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [activeItem, activeSet, cardOpacity, contentWidth, isInteractionPaused, swipeX],
+  );
 
   function renderSessionBody() {
     if (status === 'loading') {
@@ -241,46 +456,173 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
     return (
       <>
         <View style={styles.cardArea}>
-          <Pressable
-            accessibilityHint={revealed ? 'Shows the back of the card' : 'Reveals the answer'}
-            accessibilityRole="button"
-            onPress={() => setRevealed((current) => !current)}
-            style={({ pressed }) => [
-              styles.flashcard,
-              { height: cardHeight },
-              pressed && styles.cardPressed,
-            ]}>
-            <Text
-              adjustsFontSizeToFit
-              minimumFontScale={0.72}
-              numberOfLines={revealed ? 7 : 3}
+          <View style={[styles.cardStack, { height: cardHeight, width: contentWidth }]}>
+            {isCardExiting && nextItem ? (
+              <View pointerEvents="none" style={[styles.nextCardPreview, styles.flashcard]}>
+                <View style={styles.cardFace}>
+                  <Text
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    numberOfLines={3}
+                    style={[
+                      styles.cardText,
+                      {
+                        fontSize: nextFrontTextSize,
+                        lineHeight: Math.round(nextFrontTextSize * 1.18),
+                      },
+                    ]}>
+                    {nextFrontText}
+                  </Text>
+                </View>
+                <Text style={styles.cardHint}>Tap to reveal</Text>
+              </View>
+            ) : null}
+
+            <Animated.View
+              {...panResponder.panHandlers}
               style={[
-                styles.cardText,
-                { fontSize: cardTextSize, lineHeight: Math.round(cardTextSize * 1.18) },
+                styles.cardSwipeFrame,
+                {
+                  opacity: cardOpacity,
+                  transform: [{ translateX: swipeX }, { rotate: swipeRotation }],
+                },
               ]}>
-              {cardText}
-            </Text>
-            <Text style={styles.cardHint}>{revealed ? 'Tap to view term' : 'Tap to reveal'}</Text>
-          </Pressable>
+              <Pressable
+                accessibilityHint={revealed ? 'Shows the back of the card' : 'Reveals the answer'}
+                accessibilityRole="button"
+                disabled={isInteractionPaused}
+                onPress={toggleReveal}
+                style={({ pressed }) => [
+                  styles.cardTapTarget,
+                  pressed && !isInteractionPaused && styles.cardPressed,
+                ]}>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.cardShadowLayer, { opacity: cardShadowOpacity }]}
+                />
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.swipeFeedback, styles.swipeFeedbackRepeat, { opacity: repeatFeedbackOpacity }]}>
+                  <Text style={[styles.swipeFeedbackText, styles.swipeFeedbackRepeatText]}>
+                    Review again
+                  </Text>
+                </Animated.View>
+                <Animated.View
+                  pointerEvents="none"
+                  style={[styles.swipeFeedback, styles.swipeFeedbackPass, { opacity: passFeedbackOpacity }]}>
+                  <Text style={[styles.swipeFeedbackText, styles.swipeFeedbackPassText]}>
+                    Know it
+                  </Text>
+                </Animated.View>
+                <Animated.View
+                  style={[
+                    styles.flashcard,
+                    styles.cardFlipFace,
+                    { transform: [{ perspective: 1000 }, { rotateY: frontFaceRotation }] },
+                  ]}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.cardSwipeTint, styles.cardPassTint, { opacity: passTintOpacity }]}
+                  />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.cardSwipeTint,
+                      styles.cardRepeatTint,
+                      { opacity: repeatTintOpacity },
+                    ]}
+                  />
+                  <View pointerEvents="none" style={styles.cardDecorations}>
+                    <View style={[styles.cardGlow, styles.cardGlowTop]} />
+                    <View style={[styles.cardGlow, styles.cardGlowBottom]} />
+                    <Text style={[styles.sparkle, styles.sparkleTop]}>✦</Text>
+                    <Text style={[styles.sparkle, styles.sparkleTopSmall]}>✦</Text>
+                    <Text style={[styles.sparkle, styles.sparkleBottom]}>✦</Text>
+                    <Text style={[styles.sparkle, styles.sparkleBottomLarge]}>✦</Text>
+                  </View>
+                  <View style={styles.cardFace}>
+                    <Text
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                      numberOfLines={3}
+                      style={[
+                        styles.cardText,
+                        { fontSize: frontTextSize, lineHeight: Math.round(frontTextSize * 1.18) },
+                      ]}>
+                      {frontText}
+                    </Text>
+                  </View>
+                  <Text style={styles.cardHint}>Tap to reveal</Text>
+                </Animated.View>
+                <Animated.View
+                  style={[
+                    styles.flashcard,
+                    styles.cardFlipFace,
+                    { transform: [{ perspective: 1000 }, { rotateY: backFaceRotation }] },
+                  ]}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.cardSwipeTint, styles.cardPassTint, { opacity: passTintOpacity }]}
+                  />
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.cardSwipeTint,
+                      styles.cardRepeatTint,
+                      { opacity: repeatTintOpacity },
+                    ]}
+                  />
+                  <View pointerEvents="none" style={styles.cardDecorations}>
+                    <View style={[styles.cardGlow, styles.cardGlowTop]} />
+                    <View style={[styles.cardGlow, styles.cardGlowBottom]} />
+                    <Text style={[styles.sparkle, styles.sparkleTop]}>✦</Text>
+                    <Text style={[styles.sparkle, styles.sparkleTopSmall]}>✦</Text>
+                    <Text style={[styles.sparkle, styles.sparkleBottom]}>✦</Text>
+                    <Text style={[styles.sparkle, styles.sparkleBottomLarge]}>✦</Text>
+                  </View>
+                  <View style={styles.cardFace}>
+                    <Text
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.72}
+                      numberOfLines={7}
+                      style={[
+                        styles.cardText,
+                        { fontSize: backTextSize, lineHeight: Math.round(backTextSize * 1.18) },
+                      ]}>
+                      {backText}
+                    </Text>
+                  </View>
+                  <Text style={styles.cardHint}>Tap to view term</Text>
+                </Animated.View>
+              </Pressable>
+            </Animated.View>
+          </View>
         </View>
 
         <View style={styles.bottomBlock}>
           {decisionError ? <Text style={styles.errorText}>{decisionError}</Text> : null}
-          <View style={styles.actions}>
+          <View style={[styles.actions, { width: contentWidth }]}>
             <SessionButton
-              disabled={isSubmitting}
+              buttonWidth={actionButtonWidth}
+              disabled={isInteractionPaused}
+              iconName={{ ios: 'arrow.clockwise', android: 'refresh', web: 'refresh' }}
               label="Review again"
               variant="secondary"
-              onPress={() => void handleDecision('reviewAgain')}
+              onPress={() => handleCardAction('reviewAgain')}
             />
             <SessionButton
-              disabled={isSubmitting}
+              buttonWidth={actionButtonWidth}
+              disabled={isInteractionPaused}
+              iconName={{ ios: 'checkmark.circle', android: 'check_circle', web: 'check_circle' }}
               label="Know it"
               variant="primary"
-              onPress={() => void handleDecision('know')}
+              onPress={() => handleCardAction('know')}
             />
           </View>
-          <Text style={styles.footerText}>{copy.footer}</Text>
+          <View style={styles.footerRow}>
+            <Text style={styles.footerSparkle}>✦</Text>
+            <Text style={styles.footerText}>{copy.footer}</Text>
+          </View>
         </View>
       </>
     );
@@ -289,7 +631,7 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
-        colors={['#FFFEFC', '#F7F4EE']}
+        colors={['#FFFFFF', '#FFFEFC']}
         locations={[0, 1]}
         style={styles.viewport}>
         <View style={styles.shell}>
@@ -312,15 +654,11 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
               accessibilityLabel="Lesson options"
               accessibilityRole="button"
               style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-              <IconSymbol
-                color="#52615C"
-                name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
-                size={24}
-              />
+              <Text style={styles.moreText}>...</Text>
             </Pressable>
           </View>
 
-          <View style={styles.meta}>
+          <View style={[styles.meta, { width: contentWidth }]}>
             <Text numberOfLines={1} style={styles.deckName}>
               {activeSet?.name ?? 'Luma'}
             </Text>
@@ -353,13 +691,25 @@ export function LearningSessionScreen({ mode }: LearningSessionScreenProps) {
 }
 
 type SessionButtonProps = {
+  buttonWidth?: number;
   disabled?: boolean;
+  iconName?: SymbolViewProps['name'];
   label: string;
   onPress: () => void;
   variant: 'primary' | 'secondary';
 };
 
-function SessionButton({ disabled, label, onPress, variant }: SessionButtonProps) {
+function SessionButton({
+  buttonWidth,
+  disabled,
+  iconName,
+  label,
+  onPress,
+  variant,
+}: SessionButtonProps) {
+  const isPrimary = variant === 'primary';
+  const iconColor = isPrimary ? '#EAF7EE' : theme.colors.accent;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -367,17 +717,21 @@ function SessionButton({ disabled, label, onPress, variant }: SessionButtonProps
       onPress={onPress}
       style={({ pressed }) => [
         styles.sessionButton,
-        variant === 'primary' ? styles.primaryButton : styles.secondaryButton,
+        buttonWidth
+          ? { flexBasis: buttonWidth, flexGrow: 0, flexShrink: 0, width: buttonWidth }
+          : null,
+        isPrimary ? styles.primaryButton : styles.secondaryButton,
         disabled && styles.disabledButton,
         pressed && !disabled && styles.buttonPressed,
       ]}>
+      {iconName ? <IconSymbol color={iconColor} name={iconName} size={18} /> : null}
       <Text
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.82}
         style={[
           styles.sessionButtonText,
-          variant === 'primary' ? styles.primaryButtonText : styles.secondaryButtonText,
+          isPrimary ? styles.primaryButtonText : styles.secondaryButtonText,
         ]}>
         {label}
       </Text>
@@ -459,7 +813,7 @@ function getLearningTextSize(text: string) {
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#FFFFFF',
     flex: 1,
   },
   viewport: {
@@ -469,64 +823,79 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     maxWidth: 430,
-    paddingBottom: 22,
-    paddingHorizontal: 23,
+    paddingBottom: 18,
+    paddingHorizontal: 0,
     width: '100%',
   },
   topBar: {
     alignItems: 'center',
     flexDirection: 'row',
-    height: 60,
+    height: 58,
     justifyContent: 'space-between',
-    paddingTop: 4,
+    paddingHorizontal: theme.spacing.xl,
+    paddingTop: 2,
+    width: '100%',
   },
   iconButton: {
     alignItems: 'center',
     borderRadius: theme.radius.pill,
-    height: 42,
+    height: 38,
     justifyContent: 'center',
-    width: 42,
+    width: 38,
   },
   logo: {
-    height: 40,
-    width: 130,
+    height: 36,
+    maxWidth: 190,
+    width: 152,
+  },
+  moreText: {
+    color: '#52615C',
+    fontFamily: theme.typography.fontFamilyHeavy,
+    fontSize: 18,
+    fontWeight: theme.typography.weights.heavy,
+    letterSpacing: 1.6,
+    lineHeight: 18,
+    marginTop: -7,
   },
   meta: {
     alignItems: 'center',
-    minHeight: 92,
+    alignSelf: 'center',
+    minHeight: 104,
   },
   deckName: {
-    color: '#53645F',
-    fontSize: 13,
+    color: '#52645F',
+    fontSize: 12,
+    fontFamily: theme.typography.fontFamilyMedium,
     fontWeight: theme.typography.weights.medium,
-    letterSpacing: 4,
+    letterSpacing: 4.3,
     lineHeight: 18,
-    marginTop: 3,
+    marginTop: 10,
     maxWidth: '92%',
     textAlign: 'center',
     textTransform: 'uppercase',
   },
   quickProgressBlock: {
     alignItems: 'center',
-    gap: 10,
-    marginTop: 11,
+    gap: 12,
+    marginTop: 14,
   },
   progressTrack: {
-    backgroundColor: '#DDDEDA',
+    backgroundColor: '#DDEFE2',
     borderRadius: theme.radius.pill,
-    height: 5,
+    height: 7,
     overflow: 'hidden',
-    width: 244,
+    width: 268,
   },
   progressFill: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: '#2FAA56',
     borderRadius: theme.radius.pill,
     height: '100%',
-    minWidth: 8,
+    minWidth: 10,
   },
   progressLabel: {
-    color: '#53645F',
+    color: '#7F9288',
     fontSize: 14,
+    fontFamily: theme.typography.fontFamilyMedium,
     fontWeight: theme.typography.weights.medium,
     lineHeight: 18,
   },
@@ -542,12 +911,14 @@ const styles = StyleSheet.create({
   statValue: {
     color: '#101410',
     fontSize: 18,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     lineHeight: 22,
   },
   statLabel: {
     color: '#4D574F',
     fontSize: 10,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 0.9,
     lineHeight: 13,
@@ -560,71 +931,217 @@ const styles = StyleSheet.create({
     width: 1,
   },
   cardArea: {
+    alignItems: 'center',
     flex: 1,
-    justifyContent: 'flex-end',
-    minHeight: 365,
+    justifyContent: 'center',
+    minHeight: 390,
+  },
+  cardStack: {
+    position: 'relative',
+  },
+  cardSwipeFrame: {
+    ...StyleSheet.absoluteFill,
+  },
+  nextCardPreview: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.88,
+    shadowColor: '#102219',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    transform: [{ scale: 0.99 }],
+    elevation: 4,
+  },
+  cardTapTarget: {
+    borderRadius: 30,
+    flex: 1,
+    position: 'relative',
+  },
+  cardShadowLayer: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 30,
+    zIndex: 0,
+    shadowColor: '#102219',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 34,
+    elevation: 10,
+  },
+  swipeFeedback: {
+    alignItems: 'center',
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    left: '50%',
+    marginLeft: -62,
+    paddingHorizontal: 13,
+    position: 'absolute',
+    top: 22,
+    width: 124,
+    zIndex: 4,
+  },
+  swipeFeedbackPass: {
+    backgroundColor: 'rgba(229, 246, 236, 0.9)',
+    borderColor: 'rgba(36, 122, 77, 0.16)',
+  },
+  swipeFeedbackRepeat: {
+    backgroundColor: 'rgba(255, 244, 239, 0.92)',
+    borderColor: 'rgba(156, 87, 56, 0.14)',
+  },
+  swipeFeedbackText: {
+    fontFamily: theme.typography.fontFamilyExtraBold,
+    fontSize: 11,
+    fontWeight: theme.typography.weights.extraBold,
+    letterSpacing: 1,
+    lineHeight: 13,
+    textTransform: 'uppercase',
+  },
+  swipeFeedbackPassText: {
+    color: '#246D46',
+  },
+  swipeFeedbackRepeatText: {
+    color: '#94563E',
+  },
+  cardSwipeTint: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 0,
+  },
+  cardPassTint: {
+    backgroundColor: '#2F8F59',
+  },
+  cardRepeatTint: {
+    backgroundColor: '#C05646',
+  },
+  cardDecorations: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 1,
+  },
+  cardGlow: {
+    backgroundColor: 'transparent',
+    position: 'absolute',
+  },
+  cardGlowTop: {
+    borderBottomLeftRadius: 190,
+    height: 174,
+    right: -70,
+    top: -42,
+    transform: [{ rotate: '-19deg' }],
+    width: 170,
+  },
+  cardGlowBottom: {
+    borderTopRightRadius: 240,
+    bottom: -74,
+    height: 228,
+    left: -72,
+    transform: [{ rotate: '9deg' }],
+    width: 238,
+  },
+  sparkle: {
+    color: '#D8DEDA',
+    fontFamily: theme.typography.fontFamilyHeavy,
+    fontWeight: theme.typography.weights.heavy,
+    lineHeight: 28,
+    position: 'absolute',
+    textAlign: 'center',
+  },
+  sparkleTop: {
+    fontSize: 25,
+    right: 18,
+    top: 18,
+  },
+  sparkleTopSmall: {
+    color: '#E2E6E3',
+    fontSize: 15,
+    right: 8,
+    top: 41,
+  },
+  sparkleBottom: {
+    bottom: 54,
+    color: '#E2E6E3',
+    fontSize: 16,
+    left: 14,
+  },
+  sparkleBottomLarge: {
+    bottom: 29,
+    fontSize: 27,
+    left: 25,
+  },
+  cardPressed: {
+    transform: [{ scale: 0.992 }],
   },
   flashcard: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 30,
     justifyContent: 'center',
-    paddingHorizontal: 34,
-    paddingVertical: 44,
-    shadowColor: '#2A261E',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.08,
-    shadowRadius: 52,
-    width: '100%',
-    elevation: 6,
+    overflow: 'hidden',
   },
-  cardPressed: {
-    transform: [{ scale: 0.992 }],
+  cardFlipFace: {
+    ...StyleSheet.absoluteFill,
+    backfaceVisibility: 'hidden',
+    zIndex: 1,
+  },
+  cardFace: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 34,
+    paddingVertical: 30,
+    zIndex: 2,
   },
   cardText: {
-    color: '#151716',
+    color: '#041613',
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     textAlign: 'center',
   },
   cardHint: {
-    bottom: 35,
-    color: '#89918C',
+    bottom: 33,
+    color: '#739182',
     fontSize: 15,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     left: 20,
     position: 'absolute',
     right: 20,
     textAlign: 'center',
+    zIndex: 2,
   },
   bottomBlock: {
-    gap: 14,
-    paddingTop: 24,
+    alignItems: 'center',
+    gap: 18,
+    paddingTop: 18,
   },
   actions: {
     flexDirection: 'row',
-    gap: 14,
+    gap: 11,
+    justifyContent: 'space-between',
   },
   sessionButton: {
     alignItems: 'center',
     borderRadius: theme.radius.pill,
     flex: 1,
-    height: 58,
+    flexDirection: 'row',
+    gap: 7,
+    height: 60,
     justifyContent: 'center',
     minWidth: 0,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   primaryButton: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: '#2FAA56',
     shadowColor: theme.colors.accentStrong,
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.26,
     shadowRadius: 28,
-    elevation: 5,
+    elevation: 7,
   },
   secondaryButton: {
     backgroundColor: '#FFFFFF',
-    borderColor: 'rgba(20,22,19,0.04)',
+    borderColor: '#DCEFE2',
     borderWidth: 1,
   },
   disabledButton: {
@@ -635,8 +1152,9 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.99 }],
   },
   sessionButtonText: {
-    fontSize: 16,
-    fontWeight: theme.typography.weights.extraBold,
+    fontSize: 15,
+    fontFamily: theme.typography.fontFamilySemiBold,
+    fontWeight: theme.typography.weights.semibold,
     letterSpacing: 0,
     lineHeight: 20,
     textAlign: 'center',
@@ -645,11 +1163,25 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   secondaryButtonText: {
-    color: '#111815',
+    color: theme.colors.accent,
+  },
+  footerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  footerSparkle: {
+    color: '#CFEAD6',
+    fontFamily: theme.typography.fontFamilyHeavy,
+    fontSize: 15,
+    fontWeight: theme.typography.weights.heavy,
+    lineHeight: 18,
   },
   footerText: {
-    color: '#6F766F',
+    color: '#809087',
     fontSize: 13,
+    fontFamily: theme.typography.fontFamilyMedium,
     fontWeight: theme.typography.weights.medium,
     lineHeight: 18,
     textAlign: 'center',
@@ -657,6 +1189,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: theme.colors.reviewRed,
     fontSize: 13,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 18,
     textAlign: 'center',
@@ -682,6 +1215,7 @@ const styles = StyleSheet.create({
   stateTitle: {
     color: theme.colors.text,
     fontSize: 23,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     lineHeight: 28,
     textAlign: 'center',
@@ -689,6 +1223,7 @@ const styles = StyleSheet.create({
   stateBody: {
     color: theme.colors.textMuted,
     fontSize: 15,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 22,
     marginTop: 9,

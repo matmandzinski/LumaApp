@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { IconSymbol } from '@/src/components/IconSymbol';
 import { PrimaryButton } from '@/src/components/PrimaryButton';
@@ -103,6 +104,7 @@ const styles = StyleSheet.create({
   title: {
     color: theme.colors.text,
     fontSize: 32,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     lineHeight: 36,
@@ -112,6 +114,7 @@ const styles = StyleSheet.create({
   message: {
     color: theme.colors.textMuted,
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 23,
     marginTop: 10,
@@ -134,6 +137,7 @@ const styles = StyleSheet.create({
   summaryKicker: {
     color: theme.colors.accentStrong,
     fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 1.4,
     lineHeight: 14,
@@ -142,6 +146,7 @@ const styles = StyleSheet.create({
   summaryTitle: {
     color: theme.colors.text,
     fontSize: 20,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     lineHeight: 24,
     marginTop: 8,
@@ -149,6 +154,7 @@ const styles = StyleSheet.create({
   summaryBody: {
     color: theme.colors.textMuted,
     fontSize: 15,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 22,
     marginTop: 8,

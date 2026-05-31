@@ -57,6 +57,7 @@ const styles = StyleSheet.create({
   label: {
     color: theme.colors.surface,
     fontSize: theme.typography.sizes.button,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
   },
   secondaryLabel: {

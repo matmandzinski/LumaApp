@@ -12,13 +12,13 @@ import { theme } from '@/src/theme/theme';
 const lumaLogo = require('../../assets/images/luma-logo.png');
 
 const weekBars = [
-  { label: 'Mo', height: 34, active: false, muted: false },
-  { label: 'Tu', height: 58, active: false, muted: false },
-  { label: 'We', height: 42, active: false, muted: false },
-  { label: 'Th', height: 76, active: false, muted: false },
-  { label: 'Fr', height: 92, active: true, muted: false },
-  { label: 'Sa', height: 28, active: false, muted: true },
-  { label: 'Su', height: 38, active: false, muted: true },
+  { label: 'Mo', height: 14, active: false, muted: false },
+  { label: 'Tu', height: 24, active: false, muted: false },
+  { label: 'We', height: 18, active: false, muted: false },
+  { label: 'Th', height: 28, active: false, muted: false },
+  { label: 'Fr', height: 31, active: true, muted: false },
+  { label: 'Sa', height: 11, active: false, muted: true },
+  { label: 'Su', height: 17, active: false, muted: true },
 ];
 
 export function HomeScreen() {
@@ -47,9 +47,9 @@ export function HomeScreen() {
         ? 'All cards learned'
         : 'Choose an active set';
   const todayMix = [
-    { label: 'known', value: String(counts.learnedCards), color: '#2F8F59' },
-    { label: 'learning', value: String(counts.learningCards), color: '#C99B38' },
-    { label: 'difficult', value: String(counts.difficultCards), color: '#C05646' },
+    { label: 'known', value: String(counts.learnedCards), color: '#008C55' },
+    { label: 'learning', value: String(counts.learningCards), color: '#7BD7AD' },
+    { label: 'difficult', value: String(counts.difficultCards), color: '#E09435' },
   ];
 
   useFocusEffect(
@@ -227,7 +227,11 @@ export function HomeScreen() {
         </View>
       </Pressable>
 
-      <View style={styles.flowCard}>
+      <LinearGradient
+        colors={['#FCFFFC', '#F6FEF9', '#FDFEFA']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.flowCard}>
         <View style={styles.flowTop}>
           <View style={styles.flowTopCopy}>
             <Text style={styles.flowLabel}>Today's flow</Text>
@@ -243,8 +247,8 @@ export function HomeScreen() {
           {todayMix.map((item) => (
             <View key={item.label} style={styles.flowStat}>
               <View style={[styles.flowDot, { backgroundColor: item.color }]} />
-              <Text style={styles.flowStatValue}>{item.value}</Text>
-              <Text style={styles.flowStatLabel}>{item.label}</Text>
+              <Text numberOfLines={1} style={styles.flowStatValue}>{item.value}</Text>
+              <Text numberOfLines={1} style={styles.flowStatLabel}>{item.label}</Text>
             </View>
           ))}
         </View>
@@ -263,7 +267,7 @@ export function HomeScreen() {
             ))}
           </View>
         </View>
-      </View>
+      </LinearGradient>
     </Screen>
   );
 }
@@ -326,12 +330,14 @@ const styles = StyleSheet.create({
   greeting: {
     color: theme.colors.textMuted,
     fontSize: 13,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     marginBottom: 6,
   },
   headline: {
     color: theme.colors.text,
     fontSize: 34,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     lineHeight: 35,
@@ -354,12 +360,14 @@ const styles = StyleSheet.create({
   streakValue: {
     color: theme.colors.text,
     fontSize: 19,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     lineHeight: 21,
   },
   streakLabel: {
     color: theme.colors.textMuted,
     fontSize: 10,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     marginTop: 1,
   },
@@ -425,11 +433,13 @@ const styles = StyleSheet.create({
   quickPillText: {
     color: 'rgba(255,255,255,0.86)',
     fontSize: 12,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
   },
   quickTitle: {
     color: '#FFFFFF',
     fontSize: 38,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
     letterSpacing: 0,
     lineHeight: 38,
@@ -458,6 +468,7 @@ const styles = StyleSheet.create({
   startButtonText: {
     color: '#16633C',
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
   },
   sectionHead: {
@@ -470,12 +481,14 @@ const styles = StyleSheet.create({
   sectionLabel: {
     color: theme.colors.textMuted,
     fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 2,
   },
   sectionLink: {
     color: theme.colors.accentStrong,
     fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 1.5,
   },
@@ -519,18 +532,21 @@ const styles = StyleSheet.create({
   premiumLabel: {
     color: theme.colors.textMuted,
     fontSize: 10,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 1.8,
   },
   activeSetName: {
     color: theme.colors.text,
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 0,
   },
   activeSetProgress: {
     color: theme.colors.textMuted,
     fontSize: 12,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
     lineHeight: 15,
   },
@@ -547,6 +563,7 @@ const styles = StyleSheet.create({
   changeButtonText: {
     color: theme.colors.accentStrong,
     fontSize: 12,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
   },
   practiceCard: {
@@ -599,12 +616,14 @@ const styles = StyleSheet.create({
   practiceTitle: {
     color: '#106836',
     fontSize: 24,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     lineHeight: 26,
   },
   practiceSubtitle: {
     color: '#5F6E6C',
     fontSize: 16,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 23,
     marginTop: 9,
@@ -613,6 +632,7 @@ const styles = StyleSheet.create({
   practiceCount: {
     color: '#596865',
     fontSize: 15,
+    fontFamily: theme.typography.fontFamilySemiBold,
     fontWeight: theme.typography.weights.semibold,
     lineHeight: 19,
     marginTop: 22,
@@ -627,142 +647,166 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   flowCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: 'rgba(15,122,67,0.08)',
-    borderRadius: 28,
+    borderColor: 'rgba(15,122,67,0.12)',
+    borderRadius: 24,
     borderWidth: 1,
     overflow: 'hidden',
-    padding: 22,
+    padding: 20,
     shadowColor: '#23372D',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.08,
-    shadowRadius: 38,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.06,
+    shadowRadius: 34,
     elevation: 4,
   },
   flowTop: {
     alignItems: 'flex-start',
     flexDirection: 'row',
-    gap: 18,
+    gap: 16,
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 16,
   },
   flowTopCopy: {
     flex: 1,
     minWidth: 0,
   },
   flowLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
+    color: '#008C55',
+    fontSize: 10,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   flowTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
+    color: '#06160F',
+    fontSize: 21,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
-    lineHeight: 22,
-    marginTop: 6,
+    lineHeight: 23,
+    marginTop: 5,
+    maxWidth: 190,
   },
   flowTotal: {
     alignItems: 'center',
-    backgroundColor: theme.colors.accentSoft,
-    borderRadius: 20,
-    minWidth: 70,
+    backgroundColor: '#EAF9EF',
+    borderRadius: 22,
+    height: 64,
+    justifyContent: 'center',
+    minWidth: 74,
     paddingHorizontal: 12,
-    paddingVertical: 10,
   },
   flowTotalValue: {
-    color: theme.colors.accentStrong,
-    fontSize: 24,
+    color: '#008C55',
+    fontSize: 27,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
-    lineHeight: 26,
+    lineHeight: 29,
   },
   flowTotalLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
+    color: '#3E6C56',
+    fontSize: 9,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    lineHeight: 11,
   },
   flowStats: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderColor: 'rgba(14,122,67,0.1)',
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
     flexDirection: 'row',
-    gap: 10,
+    gap: 6,
+    justifyContent: 'space-between',
+    minHeight: 39,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   flowStat: {
-    backgroundColor: '#F7FBF6',
-    borderColor: 'rgba(29,52,39,0.06)',
-    borderRadius: 18,
-    borderWidth: 1,
+    alignItems: 'center',
     flex: 1,
-    minHeight: 72,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 4,
+    justifyContent: 'center',
+    minWidth: 0,
   },
   flowDot: {
     borderRadius: theme.radius.pill,
-    height: 8,
-    width: 8,
+    height: 7,
+    width: 7,
   },
   flowStatValue: {
-    color: theme.colors.text,
-    fontSize: 20,
+    color: '#06160F',
+    fontSize: 15,
+    fontFamily: theme.typography.fontFamilyHeavy,
     fontWeight: theme.typography.weights.heavy,
-    marginTop: 8,
+    lineHeight: 18,
   },
   flowStatLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
-    fontWeight: theme.typography.weights.extraBold,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    color: '#38524A',
+    fontSize: 9,
+    fontFamily: theme.typography.fontFamilyBold,
+    fontWeight: theme.typography.weights.bold,
+    lineHeight: 13,
   },
   weekBlock: {
-    marginTop: 20,
+    marginTop: 17,
   },
   weekHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 9,
   },
   weekHeaderText: {
     color: theme.colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
   },
   weekHeaderValue: {
-    color: theme.colors.accentStrong,
-    fontSize: 12,
+    color: '#06160F',
+    fontSize: 11,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
   },
   weekBars: {
     alignItems: 'flex-end',
+    backgroundColor: '#F1FCF6',
+    borderColor: 'rgba(14,122,67,0.1)',
+    borderRadius: 23,
+    borderWidth: 1,
     flexDirection: 'row',
-    gap: 9,
-    height: 116,
+    gap: 8,
+    height: 62,
     justifyContent: 'space-between',
+    paddingBottom: 9,
+    paddingHorizontal: 20,
+    paddingTop: 13,
   },
   weekDay: {
     alignItems: 'center',
     flex: 1,
-    gap: 8,
+    gap: 5,
     justifyContent: 'flex-end',
   },
   weekDayMuted: {
     opacity: 0.62,
   },
   weekBar: {
-    backgroundColor: '#DCEADF',
+    backgroundColor: '#BDEFD3',
     borderRadius: theme.radius.pill,
-    width: 12,
+    minHeight: 10,
+    width: 7,
   },
   weekBarActive: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: '#008C55',
   },
   weekLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
+    color: '#61776D',
+    fontSize: 9,
+    fontFamily: theme.typography.fontFamilyExtraBold,
     fontWeight: theme.typography.weights.extraBold,
+    lineHeight: 11,
   },
   weekLabelActive: {
     color: '#0F7A43',

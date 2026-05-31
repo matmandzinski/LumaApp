@@ -44,10 +44,12 @@ const styles = StyleSheet.create({
   label: {
     color: theme.colors.textMuted,
     fontSize: theme.typography.sizes.caption,
+    fontFamily: theme.typography.fontFamilyMedium,
     fontWeight: theme.typography.weights.medium,
   },
   currentLabel: {
     color: theme.colors.deepPurple,
+    fontFamily: theme.typography.fontFamilyBold,
     fontWeight: theme.typography.weights.bold,
   },
   dot: {
