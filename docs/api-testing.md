@@ -1,7 +1,8 @@
 # Local API testing
 
-This API is for local development and manual testing only. The React app still uses
-localStorage and is not connected to these endpoints yet.
+This API is for local development and manual testing only. The React app loads
+API-backed sets, persists the active set, uses API-backed custom set/card CRUD,
+and writes learning review decisions through the local API.
 
 ## Start the API
 
@@ -10,6 +11,10 @@ From the repository root:
 ```powershell
 dotnet run --project SimpleFlashCards.Api
 ```
+
+// MOBILE 
+cd mobile
+npx expo start 
 
 The launch profile uses:
 
@@ -64,7 +69,7 @@ $base = "http://localhost:5057"
 $externalSetId = "<external-id-from-get-sets>"
 $cardId1 = "<card-id-from-get-set>"
 $cardId2 = "<another-card-id-from-get-set>"
-$date = "2026-05-26"
+$date = "2026-05-27"
 ```
 
 Read app state:
@@ -125,6 +130,42 @@ Read set progress for the default local user:
 
 ```powershell
 curl.exe "$base/api/sets/$externalSetId/progress"
+```
+
+Review a card as `know`:
+
+```powershell
+curl.exe -X POST "$base/api/sets/$externalSetId/cards/$cardId1/review" `
+  -H "Content-Type: application/json" `
+  -d "{ `"decision`": `"know`", `"sessionType`": `"quickLesson`", `"reviewedAt`": `"2026-05-27T12:00:00.0000000Z`" }"
+```
+
+Review a card as `reviewAgain`:
+
+```powershell
+curl.exe -X POST "$base/api/sets/$externalSetId/cards/$cardId2/review" `
+  -H "Content-Type: application/json" `
+  -d "{ `"decision`": `"reviewAgain`", `"sessionType`": `"continueLearning`", `"reviewedAt`": `"2026-05-27T12:01:00.0000000Z`" }"
+```
+
+Check set progress after review:
+
+```powershell
+curl.exe "$base/api/sets/$externalSetId/progress"
+```
+
+Confirm `local-user` progress changed in SQLite:
+
+```sql
+SELECT p.user_id,
+       p.card_id,
+       p.learning_stage,
+       p.review_again_streak,
+       p.is_learned,
+       p.last_reviewed_at
+FROM user_card_progress p
+WHERE p.user_id = 'local-user'
+  AND p.card_id IN ('<card-id-from-get-set>', '<another-card-id-from-get-set>');
 ```
 
 Create a custom set:
@@ -211,7 +252,12 @@ Expected response: HTTP 403 with the title `Ready-made sets are read-only.`
 - Set detail card responses include user-scoped progress fields:
   `learningStage`, `isLearned`, `reviewAgainStreak`, `lastReviewedAt`,
   `easeFactor`, `repetitions`, `intervalDays`, and `nextReviewAt`.
+- `POST /api/sets/{externalSetId}/cards/{cardId}/review` applies the current
+  `Know it` / `Review again` stage rules for `local-user` and returns the
+  updated card plus progress summary.
 - Existing localStorage user sets are still not imported into SQLite; a later web
   connection step needs a migration/import plan for browser-local custom sets.
+- `simple-flashcards:study-progress` is still used temporarily for streak and
+  study-day stats until those events move to the API.
 - Authentication, cloud sync, Supabase, user profiles, and learning-rule changes
   are intentionally out of scope for this local API step.

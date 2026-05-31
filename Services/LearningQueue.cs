@@ -64,55 +64,33 @@ public class LearningQueue
 
     public void MarkKnown(Flashcard card, bool allowReinsert)
     {
-        card.LastReviewedAt = DateTime.Now;
-        card.ReviewAgainStreak = 0;
+        LearningReviewService.Apply(card, LearningReviewDecision.Know, DateTime.Now);
 
-        if (card.LearningStage <= 0)
+        if (card.LearningStage == 1 && allowReinsert)
         {
-            card.LearningStage = 1;
-            card.IsLearned = false;
-
-            if (allowReinsert)
-                InsertCardLater(card, 10, 20);
-
+            InsertCardLater(card, 10, 20);
             return;
         }
 
-        if (card.LearningStage == 1)
+        if (card.LearningStage == 2 && allowReinsert)
         {
-            card.LearningStage = 2;
-            card.IsLearned = false;
-
-            if (allowReinsert)
-                InsertCardLater(card, 40, 50);
-
+            InsertCardLater(card, 40, 50);
             return;
-        }
-
-        if (card.LearningStage >= 2)
-        {
-            card.LearningStage = 3;
-            card.IsLearned = true;
         }
     }
 
     public void MarkReviewAgain(Flashcard card, bool allowReinsert)
     {
-        card.LastReviewedAt = DateTime.Now;
-        card.ReviewAgainStreak++;
+        var wasDifficult = card.LearningStage == -1;
+        LearningReviewService.Apply(card, LearningReviewDecision.ReviewAgain, DateTime.Now);
 
-        if (card.LearningStage == -1 || card.ReviewAgainStreak >= 2)
+        if (wasDifficult || card.ReviewAgainStreak >= 2)
         {
-            card.LearningStage = -1;
-            card.IsLearned = false;
-
             if (allowReinsert)
                 InsertCardLater(card, 3, 5);
 
             return;
         }
-
-        card.IsLearned = false;
 
         if (allowReinsert)
             InsertCardLater(card, 5, 10);

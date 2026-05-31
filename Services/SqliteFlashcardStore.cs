@@ -551,6 +551,54 @@ public class SqliteFlashcardStore
         return LoadSetProgressSummary(connection, null, setId);
     }
 
+    public CardReviewResult? ReviewCard(
+        Guid setId,
+        Guid cardId,
+        LearningReviewDecision decision,
+        DateTime reviewedAt)
+    {
+        EnsureCreated();
+
+        using var connection = OpenConnection();
+        using var transaction = connection.BeginTransaction();
+
+        var card = LoadCard(connection, transaction, setId, cardId);
+        if (card == null)
+            return null;
+
+        var transition = LearningReviewService.Apply(card, decision, reviewedAt);
+
+        ExecuteNonQuery(connection, transaction, """
+            UPDATE flashcards
+            SET learning_stage = $learningStage,
+                review_again_streak = $reviewAgainStreak,
+                is_learned = $isLearned,
+                last_reviewed_at = $lastReviewedAt
+            WHERE set_id = $setId
+              AND id = $cardId;
+            """, command =>
+        {
+            command.Parameters.AddWithValue("$learningStage", card.LearningStage);
+            command.Parameters.AddWithValue("$reviewAgainStreak", card.ReviewAgainStreak);
+            command.Parameters.AddWithValue("$isLearned", card.IsLearned ? 1 : 0);
+            AddNullable(command, "$lastReviewedAt", FormatDateTime(card.LastReviewedAt));
+            command.Parameters.AddWithValue("$setId", setId.ToString("D"));
+            command.Parameters.AddWithValue("$cardId", cardId.ToString("D"));
+        });
+
+        UpsertUserCardProgress(connection, transaction, DefaultLocalUserId, card);
+        var summary = LoadSetProgressSummary(connection, transaction, setId);
+
+        transaction.Commit();
+
+        return new CardReviewResult(
+            card,
+            transition.PreviousStage,
+            transition.NextStage,
+            transition.IsLearned,
+            summary);
+    }
+
     public Flashcard CreateCard(Guid setId, string front, string back)
     {
         EnsureCreated();

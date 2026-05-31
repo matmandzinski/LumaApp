@@ -22,11 +22,15 @@ import {
   getSet,
   getSets,
   renameSet as renameApiSet,
+  reviewCard as reviewApiCard,
   resetSetProgress as resetApiSetProgress,
   saveActiveSet,
   updateCard as updateApiCard,
   type ApiFlashcard,
   type ApiProgressSummary,
+  type ApiReviewCardResponse,
+  type ApiReviewDecision,
+  type ApiReviewSessionType,
   type ApiSetDetail,
   type ApiSetListItem,
 } from "./services/appApi";
@@ -374,6 +378,7 @@ function loadStudyProgress(): StudyProgress {
 
 function saveStudyProgress(progress: StudyProgress) {
   try {
+    // TODO(api migration): Move streak/study progress to the API now that review events exist.
     window.localStorage.setItem(STUDY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
   } catch {
     // Persisting streak progress is best-effort in browser storage.
@@ -505,6 +510,20 @@ function withPrependedCard(set: FlashcardSet, card: Flashcard) {
   };
 }
 
+function withApiReviewResult(set: FlashcardSet, response: ApiReviewCardResponse) {
+  const updatedCard = mapApiFlashcard(response.card);
+  const flashcards = set.flashcards.map((card) =>
+    card.id === updatedCard.id ? updatedCard : card,
+  );
+
+  return {
+    ...set,
+    flashcards,
+    cardCount: response.progressSummary.cardCount,
+    progressSummary: mapApiProgressSummary(response.progressSummary),
+  };
+}
+
 function isEditableApiUserSet(set: FlashcardSet) {
   return set.isApiBacked === true && set.source === "User" && !set.readonly;
 }
@@ -590,10 +609,9 @@ function saveUserSets(sets: FlashcardSet[]) {
 }
 
 // TODO(api migration): Import existing simple-flashcards:user-sets records into SQLite.
-// TODO(api migration): Move learning progress writes to the local API.
 // TODO(api migration): Move quick lesson completion to the local API.
 // TODO(api migration): Move lesson snapshots to the local API.
-// TODO(api migration): Move streak/study progress to the local API.
+// TODO(api migration): Move streak/study progress to the local API after review events are recorded.
 // TODO(api migration): Remove simple-flashcards:user-sets reads after import is implemented.
 
 export function App() {
@@ -621,8 +639,8 @@ export function App() {
     [learningProgress],
   );
   const apiBackedSets = useMemo(
-    () => (apiSets ? applyReadyMadeProgress(apiSets, learningProgress) : null),
-    [apiSets, learningProgress],
+    () => (apiSets ? apiSets : null),
+    [apiSets],
   );
   const allSets = useMemo(() => {
     if (!apiBackedSets) return [...userSets, ...localReadyMadeSets];
@@ -783,19 +801,6 @@ export function App() {
     return detail;
   }
 
-  function clearStoredLearningProgressForSet(set: FlashcardSet) {
-    setLearningProgress((currentProgress) => {
-      const nextProgress = { ...currentProgress };
-
-      set.flashcards.forEach((card, index) => {
-        delete nextProgress[getCardProgressKey(set.id, card, index)];
-      });
-
-      saveLearningProgress(nextProgress);
-      return nextProgress;
-    });
-  }
-
   function updateUserSet(setId: string, updateSet: (set: FlashcardSet) => FlashcardSet) {
     setUserSets((currentSets) => {
       let updatedSet: FlashcardSet | null = null;
@@ -953,6 +958,8 @@ export function App() {
       const newSet = mapApiSetDetail(await createApiSet({ name: setName }));
       const latestSets = (await getSets()).map(mapApiSetSummary);
       setApiSets(upsertSet(latestSets, newSet));
+      setViewedSetId(newSet.id);
+      setSetsRoute("details");
 
       return null;
     } catch (error) {
@@ -1063,11 +1070,6 @@ export function App() {
 
           return refreshApiSet(setToReset.id);
         })
-        .then((refreshedSet) => {
-          if (refreshedSet.source === "ReadyMade") {
-            clearStoredLearningProgressForSet(refreshedSet);
-          }
-        })
         .catch((error: unknown) => {
           console.warn(
             getApiActionErrorMessage(error, `Unable to reset progress for ${setToReset.name}.`),
@@ -1099,7 +1101,7 @@ export function App() {
   }
 
   function persistCardLearningState(set: FlashcardSet, item: LearningSessionItem) {
-    if (set.isApiBacked && set.source === "User") {
+    if (set.isApiBacked) {
       setApiSets((currentSets) =>
         currentSets
           ? currentSets.map((currentSet) =>
@@ -1133,6 +1135,48 @@ export function App() {
     });
   }
 
+  function applyApiReviewResult(response: ApiReviewCardResponse) {
+    setApiSets((currentSets) =>
+      currentSets
+        ? currentSets.map((set) =>
+            set.id === response.externalSetId ? withApiReviewResult(set, response) : set,
+          )
+        : currentSets,
+    );
+  }
+
+  function syncReviewDecision(
+    set: FlashcardSet,
+    item: LearningSessionItem,
+    decision: ApiReviewDecision,
+    sessionType: ApiReviewSessionType,
+    reviewedAt: string,
+  ) {
+    if (!set.isApiBacked) return;
+
+    const cardId = item.card.id;
+    if (!cardId) {
+      console.warn(`Unable to save review progress for ${set.name}: missing API card id.`);
+      return;
+    }
+
+    void reviewApiCard(set.id, cardId, {
+      decision,
+      sessionType,
+      reviewedAt,
+    })
+      .then((response) => {
+        item.card = mapApiFlashcard(response.card);
+        applyApiReviewResult(response);
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          getApiActionErrorMessage(error, `Unable to save review progress for ${set.name}.`),
+          error,
+        );
+      });
+  }
+
   function registerStudyActivity() {
     setStudyProgress((currentProgress) => {
       const nextProgress = getNextStudyProgress(currentProgress);
@@ -1146,15 +1190,22 @@ export function App() {
     });
   }
 
-  function markKnown(item: LearningSessionItem, queue: LearningSessionItem[], allowReinsert: boolean) {
+  function markKnown(
+    item: LearningSessionItem,
+    queue: LearningSessionItem[],
+    allowReinsert: boolean,
+    sessionType: ApiReviewSessionType,
+  ) {
     const card = item.card;
-    card.lastReviewedAt = new Date().toISOString();
+    const reviewedAt = new Date().toISOString();
+    card.lastReviewedAt = reviewedAt;
     card.reviewAgainStreak = 0;
 
     if (card.learningStage <= 0) {
       card.learningStage = 1;
       card.isLearned = false;
       persistCardLearningState(selectedSet, item);
+      syncReviewDecision(selectedSet, item, "know", sessionType, reviewedAt);
       return allowReinsert ? insertCardLater(queue, item, 10, 20) : queue;
     }
 
@@ -1162,28 +1213,38 @@ export function App() {
       card.learningStage = 2;
       card.isLearned = false;
       persistCardLearningState(selectedSet, item);
+      syncReviewDecision(selectedSet, item, "know", sessionType, reviewedAt);
       return allowReinsert ? insertCardLater(queue, item, 40, 50) : queue;
     }
 
     card.learningStage = 3;
     card.isLearned = true;
     persistCardLearningState(selectedSet, item);
+    syncReviewDecision(selectedSet, item, "know", sessionType, reviewedAt);
     return queue;
   }
 
-  function markReviewAgain(item: LearningSessionItem, queue: LearningSessionItem[], allowReinsert: boolean) {
+  function markReviewAgain(
+    item: LearningSessionItem,
+    queue: LearningSessionItem[],
+    allowReinsert: boolean,
+    sessionType: ApiReviewSessionType,
+  ) {
     const card = item.card;
-    card.lastReviewedAt = new Date().toISOString();
+    const reviewedAt = new Date().toISOString();
+    card.lastReviewedAt = reviewedAt;
     card.reviewAgainStreak += 1;
 
     if (card.learningStage === -1 || card.reviewAgainStreak >= 2) {
       card.learningStage = -1;
       card.isLearned = false;
       persistCardLearningState(selectedSet, item);
+      syncReviewDecision(selectedSet, item, "reviewAgain", sessionType, reviewedAt);
       return allowReinsert ? insertCardLater(queue, item, 3, 5) : queue;
     }
 
     persistCardLearningState(selectedSet, item);
+    syncReviewDecision(selectedSet, item, "reviewAgain", sessionType, reviewedAt);
     return allowReinsert ? insertCardLater(queue, item, 5, 10) : queue;
   }
 
@@ -1221,7 +1282,7 @@ export function App() {
       const [activeItem, ...remainingItems] = queue;
       if (!activeItem) return queue;
 
-      return markKnown(activeItem, remainingItems, false);
+      return markKnown(activeItem, remainingItems, false, "quickLesson");
     });
     setQuickLessonReviewedCount((reviewedCount) =>
       Math.min(reviewedCount + 1, quickLessonDecisionLimit),
@@ -1236,7 +1297,7 @@ export function App() {
       const [activeItem, ...remainingItems] = queue;
       if (!activeItem) return queue;
 
-      return markReviewAgain(activeItem, remainingItems, false);
+      return markReviewAgain(activeItem, remainingItems, false, "quickLesson");
     });
     setQuickLessonReviewedCount((reviewedCount) =>
       Math.min(reviewedCount + 1, quickLessonDecisionLimit),
@@ -1251,7 +1312,7 @@ export function App() {
       const [activeItem, ...remainingItems] = queue;
       if (!activeItem) return queue;
 
-      return markKnown(activeItem, remainingItems, true);
+      return markKnown(activeItem, remainingItems, true, "continueLearning");
     });
     setLearningDecisionCount((decisionCount) => decisionCount + 1);
   }
@@ -1264,7 +1325,7 @@ export function App() {
       const [activeItem, ...remainingItems] = queue;
       if (!activeItem) return queue;
 
-      return markReviewAgain(activeItem, remainingItems, true);
+      return markReviewAgain(activeItem, remainingItems, true, "continueLearning");
     });
     setLearningDecisionCount((decisionCount) => decisionCount + 1);
   }

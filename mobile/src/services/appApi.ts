@@ -1,8 +1,11 @@
-const DEFAULT_API_BASE_URL = "http://localhost:5057";
+export const DEFAULT_API_BASE_URL = 'http://localhost:5057';
 
+// TODO: Physical iPhone/Android devices need your computer LAN IP instead of localhost,
+// for example http://192.168.x.x:5057. Android Emulator may need http://10.0.2.2:5057.
 export const apiBaseUrl =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") ||
-  DEFAULT_API_BASE_URL;
+  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/+$/, '') ?? DEFAULT_API_BASE_URL;
+
+export type ApiRequestOptions = RequestInit;
 
 export type ApiProgressSummary = {
   externalSetId: string;
@@ -15,12 +18,14 @@ export type ApiProgressSummary = {
   difficultCount: number;
 };
 
+export type ApiSetSource = 'User' | 'ReadyMade';
+
 export type ApiSetListItem = {
   id: string;
   externalId: string;
   ownerUserId: string | null;
   name: string;
-  source: "User" | "ReadyMade";
+  source: ApiSetSource;
   cardCount: number;
   progressSummary: ApiProgressSummary;
 };
@@ -33,6 +38,10 @@ export type ApiFlashcard = {
   reviewAgainStreak: number;
   isLearned: boolean;
   lastReviewedAt: string | null;
+  easeFactor?: number;
+  repetitions?: number;
+  intervalDays?: number;
+  nextReviewAt?: string | null;
 };
 
 export type ApiSetDetail = ApiSetListItem & {
@@ -77,39 +86,9 @@ export type ApiActiveSetResponse = {
   activeSetExternalId: string;
 };
 
-export type ApiCardInputRequest = {
-  front: string;
-  back: string;
-};
+export type ApiReviewDecision = 'know' | 'reviewAgain';
 
-export type ApiCreateSetRequest = {
-  name: string;
-  cards?: ApiCardInputRequest[];
-};
-
-export type ApiUpdateSetRequest = {
-  name: string;
-};
-
-export type ApiCreateCardRequest = ApiCardInputRequest;
-
-export type ApiUpdateCardRequest = ApiCardInputRequest;
-
-export type ApiDeleteSetResponse = {
-  externalId: string;
-  deleted: boolean;
-  activeSetExternalId: string | null;
-};
-
-export type ApiDeleteCardResponse = {
-  setExternalId: string;
-  cardId: string;
-  deleted: boolean;
-};
-
-export type ApiReviewDecision = "know" | "reviewAgain";
-
-export type ApiReviewSessionType = "quickLesson" | "continueLearning";
+export type ApiReviewSessionType = 'quickLesson' | 'continueLearning';
 
 export type ApiReviewCardRequest = {
   decision: ApiReviewDecision;
@@ -146,16 +125,16 @@ export class AppApiError extends Error {
     public readonly response?: ApiErrorResponse,
   ) {
     super(message);
-    this.name = "AppApiError";
+    this.name = 'AppApiError';
   }
 }
 
 export async function getAppState() {
-  return requestJson<ApiAppState>("/api/app-state");
+  return requestJson<ApiAppState>('/api/app-state');
 }
 
 export async function getSets() {
-  return requestJson<ApiSetListItem[]>("/api/sets");
+  return requestJson<ApiSetListItem[]>('/api/sets');
 }
 
 export async function getSet(externalSetId: string) {
@@ -163,84 +142,13 @@ export async function getSet(externalSetId: string) {
 }
 
 export async function saveActiveSet(externalSetId: string) {
-  return requestJson<ApiActiveSetResponse>("/api/active-set", {
-    method: "PUT",
+  return requestJson<ApiActiveSetResponse>('/api/active-set', {
+    method: 'PUT',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({ activeSetId: externalSetId }),
   });
-}
-
-export async function createSet(input: ApiCreateSetRequest) {
-  return requestJson<ApiSetDetail>("/api/sets", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
-  });
-}
-
-export async function renameSet(externalSetId: string, input: ApiUpdateSetRequest) {
-  return requestJson<ApiSetDetail>(`/api/sets/${encodeURIComponent(externalSetId)}`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
-  });
-}
-
-export async function deleteSet(externalSetId: string) {
-  return requestJson<ApiDeleteSetResponse>(`/api/sets/${encodeURIComponent(externalSetId)}`, {
-    method: "DELETE",
-  });
-}
-
-export async function resetSetProgress(externalSetId: string) {
-  return requestJson<ApiProgressSummary>(
-    `/api/sets/${encodeURIComponent(externalSetId)}/reset-progress`,
-    {
-      method: "POST",
-    },
-  );
-}
-
-export async function addCard(externalSetId: string, input: ApiCreateCardRequest) {
-  return requestJson<ApiFlashcard>(`/api/sets/${encodeURIComponent(externalSetId)}/cards`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
-  });
-}
-
-export async function updateCard(
-  externalSetId: string,
-  cardId: string,
-  input: ApiUpdateCardRequest,
-) {
-  return requestJson<ApiFlashcard>(
-    `/api/sets/${encodeURIComponent(externalSetId)}/cards/${encodeURIComponent(cardId)}`,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(input),
-    },
-  );
-}
-
-export async function deleteCard(externalSetId: string, cardId: string) {
-  return requestJson<ApiDeleteCardResponse>(
-    `/api/sets/${encodeURIComponent(externalSetId)}/cards/${encodeURIComponent(cardId)}`,
-    {
-      method: "DELETE",
-    },
-  );
 }
 
 export async function reviewCard(
@@ -251,40 +159,35 @@ export async function reviewCard(
   return requestJson<ApiReviewCardResponse>(
     `/api/sets/${encodeURIComponent(externalSetId)}/cards/${encodeURIComponent(cardId)}/review`,
     {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(input),
     },
   );
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${apiBaseUrl}${path}`;
-
+async function requestJson<T>(path: string, init?: ApiRequestOptions): Promise<T> {
   let response: Response;
+
   try {
-    response = await fetch(url, init);
-  } catch (error) {
+    response = await fetch(`${apiBaseUrl}${path}`, init);
+  } catch {
     throw new AppApiError(
-      `Unable to reach the local API at ${apiBaseUrl}. Is SimpleFlashCards.Api running?`,
+      `Unable to reach the local API at ${apiBaseUrl}. Start SimpleFlashCards.Api and try again.`,
     );
   }
 
   if (!response.ok) {
     const errorResponse = await readErrorResponse(response);
-    throw new AppApiError(
-      getErrorMessage(response, errorResponse),
-      response.status,
-      errorResponse,
-    );
+    throw new AppApiError(getErrorMessage(response, errorResponse), response.status, errorResponse);
   }
 
   try {
     return (await response.json()) as T;
   } catch {
-    throw new AppApiError("Local API returned an invalid JSON response.", response.status);
+    throw new AppApiError('Local API returned an invalid JSON response.', response.status);
   }
 }
 

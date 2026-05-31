@@ -16,7 +16,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy(
         viteDevCorsPolicy,
         policy => policy
-            .WithOrigins("http://localhost:5173")
+            .WithOrigins("http://localhost:5173", "http://localhost:8081", "http://127.0.0.1:8081")
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
@@ -230,6 +230,30 @@ api.MapDelete("/sets/{externalSetId}/cards/{cardId}", (string externalSetId, str
     })
     .WithSummary("Delete a card from a user set.")
     .WithDescription("Ready-made sets are read-only and return 403.");
+
+api.MapPost("/sets/{externalSetId}/cards/{cardId}/review", (string externalSetId, string cardId, ReviewCardRequest request, SqliteFlashcardStore store) =>
+    {
+        if (!TryLoadSet(store, externalSetId, out var set, out var error))
+            return error;
+
+        if (!Guid.TryParse(cardId, out var parsedCardId))
+            return ValidationError("cardId", "Use a card id returned by GET /api/sets/{externalSetId}.");
+
+        if (!TryParseReviewDecision(request.Decision, out var decision))
+            return ValidationError("decision", "Use know or reviewAgain.");
+
+        if (!IsSupportedReviewSessionType(request.SessionType))
+            return ValidationError("sessionType", "Use quickLesson or continueLearning.");
+
+        var reviewedAt = request.ReviewedAt ?? DateTime.UtcNow;
+        var result = store.ReviewCard(set!.Id, parsedCardId, decision, reviewedAt);
+
+        return result == null
+            ? Results.NotFound(new ErrorResponse("Card not found."))
+            : Results.Ok(ToReviewCardResponse(set, result, request.Decision!, request.SessionType!, reviewedAt));
+    })
+    .WithSummary("Apply one learning review decision to a card.")
+    .WithDescription("Updates local-user progress in user_card_progress. Ready-made set content is read-only, but local learning progress is writable for both ready-made and user sets.");
 
 api.MapPut("/active-set", (ActiveSetRequest request, SqliteFlashcardStore store) =>
     {
@@ -461,6 +485,29 @@ static bool TryParseDate(string? value, out DateOnly localDate) =>
         DateTimeStyles.None,
         out localDate);
 
+static bool TryParseReviewDecision(string? value, out LearningReviewDecision decision)
+{
+    decision = default;
+
+    if (string.Equals(value, "know", StringComparison.Ordinal))
+    {
+        decision = LearningReviewDecision.Know;
+        return true;
+    }
+
+    if (string.Equals(value, "reviewAgain", StringComparison.Ordinal))
+    {
+        decision = LearningReviewDecision.ReviewAgain;
+        return true;
+    }
+
+    return false;
+}
+
+static bool IsSupportedReviewSessionType(string? value) =>
+    string.Equals(value, "quickLesson", StringComparison.Ordinal) ||
+    string.Equals(value, "continueLearning", StringComparison.Ordinal);
+
 static IResult ValidationError(string field, string message) =>
     Results.ValidationProblem(new Dictionary<string, string[]>
     {
@@ -538,6 +585,25 @@ static SetProgressSummaryResponse ToProgressSummaryResponse(SetProgressSummary s
         summary.LearningCount,
         summary.LearnedCount,
         summary.DifficultCount);
+
+static ReviewCardResponse ToReviewCardResponse(
+    FlashcardSet set,
+    CardReviewResult result,
+    string decision,
+    string sessionType,
+    DateTime reviewedAt) =>
+    new(
+        set.ExternalId,
+        FormatId(set.Id),
+        FormatId(result.Card.Id),
+        decision,
+        sessionType,
+        reviewedAt,
+        ToCardResponse(result.Card),
+        result.PreviousStage,
+        result.NextStage,
+        result.IsLearned,
+        ToProgressSummaryResponse(result.ProgressSummary));
 
 static LessonSnapshotResponse? ToLessonSnapshotResponse(LessonSnapshot? snapshot, SqliteFlashcardStore store)
 {
@@ -632,6 +698,24 @@ public sealed record DeleteCardResponse(
     string SetExternalId,
     string CardId,
     bool Deleted);
+
+public sealed record ReviewCardRequest(
+    string? Decision,
+    string? SessionType,
+    DateTime? ReviewedAt = null);
+
+public sealed record ReviewCardResponse(
+    string ExternalSetId,
+    string InternalSetId,
+    string CardId,
+    string Decision,
+    string SessionType,
+    DateTime ReviewedAt,
+    FlashcardResponse Card,
+    int PreviousStage,
+    int NextStage,
+    bool IsLearned,
+    SetProgressSummaryResponse ProgressSummary);
 
 public sealed record SetProgressSummaryResponse(
     string ExternalSetId,
